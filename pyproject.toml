@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "canvas-course-agent"
 version = "0.0.1"
@@ -13,6 +17,10 @@ dependencies = [
 
 [project.scripts]
 canvas-agent = "agent.cli:main"
+
+[tool.setuptools]
+# Flat-layout repo; only package the `agent` package.
+packages = ["agent"]
 
 [tool.ruff]
 line-length = 100
