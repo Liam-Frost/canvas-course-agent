@@ -121,9 +121,9 @@ def upcoming(*, db_path: str, days: int = 14, all_courses: bool = False, timezon
     t.add_column("course")
     t.add_column("type")
     t.add_column("title")
-    t.add_column(f"start_at({tzs})")
+    t.add_column(f"start_at\n({tzs})")
     t.add_column("duration(min)")
-    t.add_column(f"due_at({tzs})")
+    t.add_column(f"due_at\n({tzs})")
 
     for it in items[:80]:
         t.add_row(
