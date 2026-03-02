@@ -61,6 +61,11 @@ canvas-agent sync quizzes --days 14
 canvas-agent sync calendar --days 14
 ```
 
+4) Show upcoming (merged view):
+```bash
+canvas-agent upcoming --days 14
+```
+
 If you want to fetch for all courses (debug):
 ```bash
 canvas-agent sync assignments --days 14 --all
