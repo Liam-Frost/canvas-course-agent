@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .storage.sqlite import connect, list_courses, list_starred_course_ids
-from .timeutil import fmt_canvas_dt, get_tz, parse_canvas_dt, tz_label
+from .timeutil import fmt_canvas_dt_2line, get_tz, parse_canvas_dt, tz_label
 
 console = Console()
 
@@ -130,9 +130,9 @@ def upcoming(*, db_path: str, days: int = 14, all_courses: bool = False, timezon
             it.course_name,
             it.kind,
             it.title,
-            fmt_canvas_dt(it.start_at, tz),
+            fmt_canvas_dt_2line(it.start_at, tz),
             "" if it.duration_min is None else str(it.duration_min),
-            fmt_canvas_dt(it.due_at, tz),
+            fmt_canvas_dt_2line(it.due_at, tz),
         )
 
     console.print(t)
