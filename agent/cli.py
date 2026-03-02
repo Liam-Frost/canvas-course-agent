@@ -24,6 +24,7 @@ def load_settings() -> Settings:
         canvas_access_token=os.getenv("CANVAS_ACCESS_TOKEN", ""),
         db_path=os.getenv("DB_PATH", "./data/agent.db"),
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL") or None,
+        timezone=os.getenv("TIMEZONE", "UTC"),
     )
 
 
@@ -110,11 +111,28 @@ def main() -> None:
                     days=args.days,
                     all_courses=args.all,
                     type=args.type,
+                    timezone=s.timezone,
                 )
             )
         if args.sync_cmd == "assignments":
-            raise SystemExit(sync_assignments(client, db_path=s.db_path, days=args.days, all_courses=args.all))
+            raise SystemExit(
+                sync_assignments(
+                    client,
+                    db_path=s.db_path,
+                    days=args.days,
+                    all_courses=args.all,
+                    timezone=s.timezone,
+                )
+            )
         if args.sync_cmd == "quizzes":
-            raise SystemExit(sync_quizzes(client, db_path=s.db_path, days=args.days, all_courses=args.all))
+            raise SystemExit(
+                sync_quizzes(
+                    client,
+                    db_path=s.db_path,
+                    days=args.days,
+                    all_courses=args.all,
+                    timezone=s.timezone,
+                )
+            )
 
     raise SystemExit(2)
