@@ -70,7 +70,14 @@ def sync_quizzes(client: CanvasClient, *, db_path: str, days: int = 14, all_cour
 
     with conn:
         for cid in course_ids:
-            items = client.list_quizzes(int(cid))
+            try:
+                items = client.list_quizzes(int(cid))
+            except Exception as e:
+                # Canvas returns 404 for /quizzes when the Quizzes feature is disabled for a course.
+                # Don't fail the whole sync.
+                console.print(f"[yellow]Skip quizzes for course {cid}: {type(e).__name__}[/yellow]")
+                continue
+
             total += len(items)
             for q in items:
                 upsert_quiz(conn, int(cid), q)
