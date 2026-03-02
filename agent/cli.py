@@ -53,9 +53,10 @@ def cmd_healthcheck() -> int:
 def main() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(prog="canvas-agent")
+    p = argparse.ArgumentParser(prog="canvas-agent", description="Canvas Course Agent")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    sub.add_parser("help")
     sub.add_parser("healthcheck")
 
     sp_courses = sub.add_parser("courses")
@@ -94,6 +95,10 @@ def main() -> None:
     p_qz.add_argument("--all", action="store_true")
 
     args = p.parse_args()
+    if args.cmd == "help":
+        p.print_help()
+        raise SystemExit(0)
+
     if args.cmd == "healthcheck":
         raise SystemExit(cmd_healthcheck())
 
