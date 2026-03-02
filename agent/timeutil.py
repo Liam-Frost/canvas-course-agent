@@ -47,3 +47,16 @@ def fmt_canvas_dt(value: str | None, tz) -> str:
     if not dt:
         return ""
     return dt.astimezone(tz).replace(microsecond=0).isoformat()
+
+
+def fmt_canvas_dt_2line(value: str | None, tz) -> str:
+    """Render as two lines so tables don't ellipsize timestamps on narrow terminals."""
+    dt = parse_canvas_dt(value)
+    if not dt:
+        return ""
+    local = dt.astimezone(tz).replace(microsecond=0)
+    # Example:
+    # 2026-03-03
+    # 14:00 PST
+    tzname = local.tzname() or ""
+    return f"{local.date().isoformat()}\n{local.strftime('%H:%M')} {tzname}".rstrip()

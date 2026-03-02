@@ -7,7 +7,7 @@ from rich.table import Table
 
 from .providers.canvas import CanvasClient
 from .storage.sqlite import connect, list_courses, list_starred_course_ids, upsert_assignment, upsert_quiz
-from .timeutil import fmt_canvas_dt, get_tz, tz_label, parse_canvas_dt
+from .timeutil import fmt_canvas_dt_2line, get_tz, tz_label, parse_canvas_dt
 
 console = Console()
 
@@ -66,7 +66,7 @@ def sync_assignments(
     t.add_column("name")
     t.add_column(f"due_at({tzs})")
     for row in sorted(upcoming, key=lambda x: x[1])[:50]:
-        t.add_row(row[0], row[2], fmt_canvas_dt(row[1], tz))
+        t.add_row(row[0], row[2], fmt_canvas_dt_2line(row[1], tz))
     console.print(t)
     if len(upcoming) > 50:
         console.print(f"(showing 50/{len(upcoming)} upcoming within {days} days)")
@@ -152,9 +152,9 @@ def sync_quizzes(
         t.add_row(
             course,
             title,
-            fmt_canvas_dt(unlock_at, tz),
+            fmt_canvas_dt_2line(unlock_at, tz),
             "" if time_limit is None else str(time_limit),
-            fmt_canvas_dt(due_at, tz),
+            fmt_canvas_dt_2line(due_at, tz),
         )
     console.print(t)
     if len(upcoming) > 50:

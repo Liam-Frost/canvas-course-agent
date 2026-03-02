@@ -42,6 +42,12 @@ cp .env.example .env
 canvas-agent healthcheck
 ```
 
+## First-time setup
+Run the init wizard to generate `.env`:
+```bash
+canvas-agent init
+```
+
 ## Basic usage
 1) Sync courses:
 ```bash

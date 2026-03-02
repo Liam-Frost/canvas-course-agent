@@ -14,7 +14,7 @@ from .storage.sqlite import (
     upsert_course,
     upsert_quiz,
 )
-from .timeutil import fmt_canvas_dt, get_tz, tz_label
+from .timeutil import fmt_canvas_dt_2line, get_tz, tz_label
 
 console = Console()
 
@@ -88,7 +88,7 @@ def sync_calendar(
             str(it.get("id")),
             str(it.get("type") or ""),
             str(it.get("title") or ""),
-            fmt_canvas_dt(it.get("start_at"), tz),
+            fmt_canvas_dt_2line(it.get("start_at"), tz),
             str(it.get("context_code") or ""),
         )
 
