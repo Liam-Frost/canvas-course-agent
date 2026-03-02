@@ -90,52 +90,22 @@ def _candidate_reminders(
     quiz_loud = _parse_offsets(get_setting(conn, "remind.quiz.offsets_loud", "60"), [60])
     quiz_silent = _parse_offsets(get_setting(conn, "remind.quiz.offsets_silent", "10"), [10])
 
-    # Assignments: use due_at
-    asg_rows = conn.execute(
-        "SELECT id, course_id, name, due_at, html_url, raw_json FROM assignments WHERE course_id IN (%s)"
-        % ",".join("?" * len(course_ids)),
-        course_ids,
-    ).fetchall()
-
-    for r in asg_rows:
-        due = parse_canvas_dt(r[3])
-        if not due:
-            continue
-        for off in asg_offsets:
-            when = due - timedelta(minutes=off)
-            if not (now <= when <= look_end):
-                continue
-            yield Reminder(
-                channel="discord",
-                silent=False,
-                kind="assignment",
-                item_id=int(r[0]),
-                course_name=course_name_by_id.get(int(r[1]), str(r[1])),
-                title=str(r[2] or ""),
-                when=when,
-                ref_time=due,
-                url=str(r[4] or ""),
-            )
-            yield Reminder(
-                channel="telegram",
-                silent=False,
-                kind="assignment",
-                item_id=int(r[0]),
-                course_name=course_name_by_id.get(int(r[1]), str(r[1])),
-                title=str(r[2] or ""),
-                when=when,
-                ref_time=due,
-                url=str(r[4] or ""),
-            )
-
     # Quizzes: use unlock_at as primary reference
     quiz_rows = conn.execute(
         "SELECT id, course_id, title, raw_json FROM quizzes WHERE course_id IN (%s)" % ",".join("?" * len(course_ids)),
         course_ids,
     ).fetchall()
 
+    quiz_assignment_ids: set[int] = set()
+
     for r in quiz_rows:
         raw: dict[str, Any] = json.loads(r[3])
+        if raw.get("quiz_type") == "assignment" and raw.get("assignment_id"):
+            try:
+                quiz_assignment_ids.add(int(raw.get("assignment_id")))
+            except Exception:
+                pass
+
         unlock = parse_canvas_dt(raw.get("unlock_at"))
         due = parse_canvas_dt(raw.get("due_at"))
         ref = unlock or due
@@ -175,6 +145,48 @@ def _candidate_reminders(
                 url=str(raw.get("html_url") or ""),
             )
 
+    # Assignments: use due_at (but skip those that are represented by quizzes)
+    asg_rows = conn.execute(
+        "SELECT id, course_id, name, due_at, html_url, raw_json FROM assignments WHERE course_id IN (%s)"
+        % ",".join("?" * len(course_ids)),
+        course_ids,
+    ).fetchall()
+
+    for r in asg_rows:
+        asg_id = int(r[0])
+        if asg_id in quiz_assignment_ids:
+            continue
+
+        due = parse_canvas_dt(r[3])
+        if not due:
+            continue
+        for off in asg_offsets:
+            when = due - timedelta(minutes=off)
+            if not (now <= when <= look_end):
+                continue
+            yield Reminder(
+                channel="discord",
+                silent=False,
+                kind="assignment",
+                item_id=asg_id,
+                course_name=course_name_by_id.get(int(r[1]), str(r[1])),
+                title=str(r[2] or ""),
+                when=when,
+                ref_time=due,
+                url=str(r[4] or ""),
+            )
+            yield Reminder(
+                channel="telegram",
+                silent=False,
+                kind="assignment",
+                item_id=asg_id,
+                course_name=course_name_by_id.get(int(r[1]), str(r[1])),
+                title=str(r[2] or ""),
+                when=when,
+                ref_time=due,
+                url=str(r[4] or ""),
+            )
+
 
 def remind_run(
     *,
@@ -196,17 +208,17 @@ def remind_run(
     reminders = list(_candidate_reminders(conn=conn, lookahead_min=lookahead_min, timezone=timezone))
 
     t = Table(title=f"Reminders (lookahead {lookahead_min} min)")
-    t.add_column("when(UTC)")
+    t.add_column(f"when\n(UTC)")
     t.add_column("channel")
     t.add_column("silent")
     t.add_column("type")
     t.add_column("course")
     t.add_column("title")
-    t.add_column(f"ref_time({tzs})")
+    t.add_column(f"ref_time\n({tzs})")
 
     for rm in sorted(reminders, key=lambda r: r.when):
         t.add_row(
-            rm.when.replace(microsecond=0).isoformat(),
+            rm.when.replace(microsecond=0).strftime("%Y-%m-%d\n%H:%MZ"),
             rm.channel,
             "yes" if rm.silent else "",
             rm.kind,
