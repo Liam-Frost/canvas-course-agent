@@ -8,3 +8,4 @@ class Settings(BaseModel):
     canvas_access_token: str = Field(default="")
     db_path: str = Field(default="./data/agent.db")
     discord_webhook_url: str | None = Field(default=None)
+    timezone: str = Field(default="UTC")

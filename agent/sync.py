@@ -14,6 +14,7 @@ from .storage.sqlite import (
     upsert_course,
     upsert_quiz,
 )
+from .timeutil import fmt_canvas_dt, get_tz, tz_label
 
 console = Console()
 
@@ -53,6 +54,7 @@ def sync_calendar(
     days: int = 14,
     all_courses: bool = False,
     type: str | None = None,
+    timezone: str = "UTC",
 ) -> int:
     now = datetime.now(UTC)
     start = now.isoformat()
@@ -71,11 +73,14 @@ def sync_calendar(
         for it in items:
             upsert_calendar_item(conn, it)
 
+    tz = get_tz(timezone)
+    tzs = tz_label(tz)
+
     t = Table(title=f"Calendar items synced: {len(items)} (next {days} days)")
     t.add_column("id", justify="right")
     t.add_column("type")
     t.add_column("title")
-    t.add_column("start_at")
+    t.add_column(f"start_at({tzs})")
     t.add_column("context")
 
     for it in sorted(items, key=lambda x: x.get("start_at") or "")[:50]:
@@ -83,7 +88,7 @@ def sync_calendar(
             str(it.get("id")),
             str(it.get("type") or ""),
             str(it.get("title") or ""),
-            str(it.get("start_at") or ""),
+            fmt_canvas_dt(it.get("start_at"), tz),
             str(it.get("context_code") or ""),
         )
 

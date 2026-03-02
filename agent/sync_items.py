@@ -7,11 +7,19 @@ from rich.table import Table
 
 from .providers.canvas import CanvasClient
 from .storage.sqlite import connect, list_courses, list_starred_course_ids, upsert_assignment, upsert_quiz
+from .timeutil import fmt_canvas_dt, get_tz, tz_label, parse_canvas_dt
 
 console = Console()
 
 
-def sync_assignments(client: CanvasClient, *, db_path: str, days: int = 14, all_courses: bool = False) -> int:
+def sync_assignments(
+    client: CanvasClient,
+    *,
+    db_path: str,
+    days: int = 14,
+    all_courses: bool = False,
+    timezone: str = "UTC",
+) -> int:
     conn = connect(db_path)
     course_rows = list_courses(conn)
     course_name_by_id = {int(r["id"]): str(r["name"] or r["course_code"] or r["id"]) for r in course_rows}
@@ -21,6 +29,9 @@ def sync_assignments(client: CanvasClient, *, db_path: str, days: int = 14, all_
     if not course_ids:
         console.print("No courses selected. Star some courses first: canvas-agent courses star ...")
         return 1
+
+    tz = get_tz(timezone)
+    tzs = tz_label(tz)
 
     now = datetime.now(UTC)
     end = now + timedelta(days=days)
@@ -37,19 +48,25 @@ def sync_assignments(client: CanvasClient, *, db_path: str, days: int = 14, all_
                 due = a.get("due_at")
                 if not due:
                     continue
-                try:
-                    dt = datetime.fromisoformat(due.replace("Z", "+00:00"))
-                except Exception:
+                dt = parse_canvas_dt(due)
+                if not dt:
                     continue
                 if now <= dt <= end:
-                    upcoming.append((course_name_by_id.get(int(cid), str(cid)), due, str(a.get("name") or ""), str(a.get("html_url") or "")))
+                    upcoming.append(
+                        (
+                            course_name_by_id.get(int(cid), str(cid)),
+                            due,
+                            str(a.get("name") or ""),
+                            str(a.get("html_url") or ""),
+                        )
+                    )
 
     t = Table(title=f"Assignments synced: {total} (courses={len(course_ids)})")
     t.add_column("course")
     t.add_column("name")
-    t.add_column("due_at")
+    t.add_column(f"due_at({tzs})")
     for row in sorted(upcoming, key=lambda x: x[1])[:50]:
-        t.add_row(row[0], row[2], row[1])
+        t.add_row(row[0], row[2], fmt_canvas_dt(row[1], tz))
     console.print(t)
     if len(upcoming) > 50:
         console.print(f"(showing 50/{len(upcoming)} upcoming within {days} days)")
@@ -57,7 +74,14 @@ def sync_assignments(client: CanvasClient, *, db_path: str, days: int = 14, all_
     return 0
 
 
-def sync_quizzes(client: CanvasClient, *, db_path: str, days: int = 14, all_courses: bool = False) -> int:
+def sync_quizzes(
+    client: CanvasClient,
+    *,
+    db_path: str,
+    days: int = 14,
+    all_courses: bool = False,
+    timezone: str = "UTC",
+) -> int:
     conn = connect(db_path)
     course_rows = list_courses(conn)
     course_name_by_id = {int(r["id"]): str(r["name"] or r["course_code"] or r["id"]) for r in course_rows}
@@ -67,6 +91,9 @@ def sync_quizzes(client: CanvasClient, *, db_path: str, days: int = 14, all_cour
     if not course_ids:
         console.print("No courses selected. Star some courses first: canvas-agent courses star ...")
         return 1
+
+    tz = get_tz(timezone)
+    tzs = tz_label(tz)
 
     now = datetime.now(UTC)
     end = now + timedelta(days=days)
@@ -95,9 +122,8 @@ def sync_quizzes(client: CanvasClient, *, db_path: str, days: int = 14, all_cour
                 ref = unlock or due
                 if not ref:
                     continue
-                try:
-                    dt = datetime.fromisoformat(ref.replace("Z", "+00:00"))
-                except Exception:
+                dt = parse_canvas_dt(ref)
+                if not dt:
                     continue
                 if now <= dt <= end:
                     upcoming.append(
@@ -113,9 +139,9 @@ def sync_quizzes(client: CanvasClient, *, db_path: str, days: int = 14, all_cour
     t = Table(title=f"Quizzes synced: {total} (courses={len(course_ids)})")
     t.add_column("course")
     t.add_column("title")
-    t.add_column("start_at")
+    t.add_column(f"start_at({tzs})")
     t.add_column("duration(min)")
-    t.add_column("due_at")
+    t.add_column(f"due_at({tzs})")
 
     def _sort_key(r: tuple[str, str, str, str, int | None]) -> str:
         # sort by start_at (unlock) first, else due
@@ -123,7 +149,13 @@ def sync_quizzes(client: CanvasClient, *, db_path: str, days: int = 14, all_cour
 
     for row in sorted(upcoming, key=_sort_key)[:50]:
         course, unlock_at, title, due_at, time_limit = row
-        t.add_row(course, title, unlock_at, "" if time_limit is None else str(time_limit), due_at)
+        t.add_row(
+            course,
+            title,
+            fmt_canvas_dt(unlock_at, tz),
+            "" if time_limit is None else str(time_limit),
+            fmt_canvas_dt(due_at, tz),
+        )
     console.print(t)
     if len(upcoming) > 50:
         console.print(f"(showing 50/{len(upcoming)} upcoming within {days} days)")

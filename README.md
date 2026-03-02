@@ -19,6 +19,7 @@ Set env vars (recommended via `.env`):
 - `CANVAS_BASE_URL` (e.g. `https://canvas.ubc.ca`)
 - `CANVAS_ACCESS_TOKEN` (Canvas API token)
 - `DB_PATH` (default: `./data/agent.db`)
+- `TIMEZONE` (IANA timezone for display, e.g. `America/Vancouver`)
 - `DISCORD_WEBHOOK_URL` (optional for v0; later we can switch to a bot)
 
 Example (`.env`):
