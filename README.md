@@ -2,11 +2,13 @@
 
 A personal agent that pulls course info from Canvas (syllabus/assignments/quizzes/calendar) and turns it into a local course archive + reminders (e.g. Discord).
 
-## Goals (v0)
-- Import courses + key metadata
-- Import deadlines (assignments/quizzes) via Canvas APIs
+This is meant to work with **any** Canvas instance (e.g. `https://canvas.ubc.ca`) via config.
+
+## What it does (v0 scope)
+- Import your course list
+- Import deadlines (assignments/quizzes/calendar items)
 - Store locally (SQLite)
-- Send reminders to Discord
+- Send reminders to Discord (webhook for now)
 
 ## Configuration
 This project is **multi-school** by design.
@@ -17,6 +19,14 @@ Set env vars (recommended via `.env`):
 - `CANVAS_ACCESS_TOKEN` (Canvas API token)
 - `DB_PATH` (default: `./data/agent.db`)
 - `DISCORD_WEBHOOK_URL` (optional for v0; later we can switch to a bot)
+
+Example (`.env`):
+```bash
+CANVAS_BASE_URL=https://canvas.ubc.ca
+CANVAS_ACCESS_TOKEN=...
+DB_PATH=./data/agent.db
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
 
 ## Dev quickstart
 ```bash
@@ -29,6 +39,25 @@ cp .env.example .env
 # edit .env
 canvas-agent healthcheck
 ```
+
+## How to get a Canvas token
+For personal use/testing you can generate an access token in Canvas:
+- Profile → Approved Integrations → New Access Token
+
+Treat it like a password.
+
+## GitHub workflow
+We use GitHub CLI (`gh`) on the VPS.
+
+Authenticate once:
+```bash
+gh auth login
+```
+
+Then create/push repos from the terminal.
+
+## License
+MIT
 
 ## Security
 Treat `CANVAS_ACCESS_TOKEN` like a password. Do not commit it.
