@@ -80,7 +80,7 @@ def sync_calendar(
     t.add_column("id", justify="right")
     t.add_column("type")
     t.add_column("title")
-    t.add_column(f"start_at({tzs})")
+    t.add_column(f"start_at\n({tzs})")
     t.add_column("context")
 
     for it in sorted(items, key=lambda x: x.get("start_at") or "")[:50]:

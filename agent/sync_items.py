@@ -64,7 +64,7 @@ def sync_assignments(
     t = Table(title=f"Assignments synced: {total} (courses={len(course_ids)})")
     t.add_column("course")
     t.add_column("name")
-    t.add_column(f"due_at({tzs})")
+    t.add_column(f"due_at\n({tzs})")
     for row in sorted(upcoming, key=lambda x: x[1])[:50]:
         t.add_row(row[0], row[2], fmt_canvas_dt_2line(row[1], tz))
     console.print(t)
@@ -139,9 +139,9 @@ def sync_quizzes(
     t = Table(title=f"Quizzes synced: {total} (courses={len(course_ids)})")
     t.add_column("course")
     t.add_column("title")
-    t.add_column(f"start_at({tzs})")
+    t.add_column(f"start_at\n({tzs})")
     t.add_column("duration(min)")
-    t.add_column(f"due_at({tzs})")
+    t.add_column(f"due_at\n({tzs})")
 
     def _sort_key(r: tuple[str, str, str, str, int | None]) -> str:
         # sort by start_at (unlock) first, else due
