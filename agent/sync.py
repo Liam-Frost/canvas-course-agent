@@ -6,7 +6,14 @@ from rich.console import Console
 from rich.table import Table
 
 from .providers.canvas import CanvasClient
-from .storage.sqlite import connect, upsert_calendar_item, upsert_course
+from .storage.sqlite import (
+    connect,
+    list_starred_course_ids,
+    upsert_assignment,
+    upsert_calendar_item,
+    upsert_course,
+    upsert_quiz,
+)
 
 console = Console()
 
@@ -39,12 +46,25 @@ def sync_courses(client: CanvasClient, *, db_path: str) -> int:
     return 0
 
 
-def sync_calendar(client: CanvasClient, *, db_path: str, days: int = 14) -> int:
+def sync_calendar(
+    client: CanvasClient,
+    *,
+    db_path: str,
+    days: int = 14,
+    all_courses: bool = False,
+    type: str | None = None,
+) -> int:
     now = datetime.now(UTC)
     start = now.isoformat()
     end = (now + timedelta(days=days)).isoformat()
 
-    items = client.list_calendar_events(start_date=start, end_date=end)
+    context_codes = None
+    if not all_courses:
+        conn0 = connect(db_path)
+        starred = list_starred_course_ids(conn0)
+        context_codes = [f"course_{cid}" for cid in starred]
+
+    items = client.list_calendar_events(start_date=start, end_date=end, type=type, context_codes=context_codes)
 
     conn = connect(db_path)
     with conn:

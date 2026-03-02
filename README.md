@@ -7,6 +7,7 @@ This is meant to work with **any** Canvas instance (e.g. `https://canvas.ubc.ca`
 ## What it does (v0 scope)
 - Import your course list
 - Import deadlines (assignments/quizzes/calendar items)
+- Let you pick “important courses” (starred) and only sync/remind for those
 - Store locally (SQLite)
 - Send reminders to Discord (webhook for now)
 
@@ -38,6 +39,30 @@ pip install -e .
 cp .env.example .env
 # edit .env
 canvas-agent healthcheck
+```
+
+## Basic usage
+1) Sync courses:
+```bash
+canvas-agent sync courses
+```
+
+2) List and star important courses:
+```bash
+canvas-agent courses list
+canvas-agent courses star 6 7 8
+```
+
+3) Sync items (defaults to ⭐ courses only):
+```bash
+canvas-agent sync assignments --days 14
+canvas-agent sync quizzes --days 14
+canvas-agent sync calendar --days 14
+```
+
+If you want to fetch for all courses (debug):
+```bash
+canvas-agent sync assignments --days 14 --all
 ```
 
 ## How to get a Canvas token
