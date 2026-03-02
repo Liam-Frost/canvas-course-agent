@@ -112,7 +112,7 @@ def sync_quizzes(
     end = now + timedelta(days=days)
 
     total = 0
-    upcoming: list[tuple[str, str, str, str, int | None]] = []  # course_name, unlock_at, title, due_at, time_limit(min)
+    upcoming: list[tuple[str, str, str, str, str, int | None]] = []  # course_name, unlock_at, title, lock_at, due_at, time_limit(min)
 
     with conn:
         for cid in course_ids:
@@ -144,6 +144,7 @@ def sync_quizzes(
                             course_name_by_id.get(int(cid), str(cid)),
                             str(unlock or ""),
                             str(q.get("title") or ""),
+                            str(q.get("lock_at") or ""),
                             str(due or ""),
                             int(time_limit) if time_limit is not None else None,
                         )
@@ -154,19 +155,33 @@ def sync_quizzes(
     t.add_column("title")
     t.add_column(f"start_at\n({tzs})")
     t.add_column("duration(min)")
+    t.add_column(f"end_at\n({tzs})")
+    t.add_column(f"lock_at\n({tzs})")
     t.add_column(f"due_at\n({tzs})")
 
-    def _sort_key(r: tuple[str, str, str, str, int | None]) -> str:
+    def _sort_key(r: tuple[str, str, str, str, str, int | None]) -> str:
         # sort by start_at (unlock) first, else due
-        return r[1] or r[3]
+        return r[1] or r[4]
 
     for row in sorted(upcoming, key=_sort_key)[:50]:
-        course, unlock_at, title, due_at, time_limit = row
+        course, unlock_at, title, lock_at, due_at, time_limit = row
+
+        # end_at: prefer lock_at; else unlock_at + time_limit; else due_at
+        end_at = lock_at
+        if not end_at and unlock_at and time_limit is not None:
+            dt = parse_canvas_dt(unlock_at)
+            if dt:
+                end_at = (dt + timedelta(minutes=int(time_limit))).isoformat()
+        if not end_at:
+            end_at = due_at
+
         t.add_row(
             course,
             title,
             fmt_canvas_dt_2line(unlock_at, tz),
             "" if time_limit is None else str(time_limit),
+            fmt_canvas_dt_2line(end_at, tz),
+            fmt_canvas_dt_2line(lock_at, tz),
             fmt_canvas_dt_2line(due_at, tz),
         )
     console.print(t)
