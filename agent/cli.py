@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from .config import Settings
+from .config_cmd import cmd_config_set, cmd_config_show
 from .courses import cmd_courses_list, cmd_courses_star, cmd_courses_unstar
 from .providers.canvas import CanvasClient
 from .sync import sync_calendar, sync_courses
@@ -59,15 +60,26 @@ def main() -> None:
     sub.add_parser("help")
     sub.add_parser("healthcheck")
 
+    sp_config = sub.add_parser("config")
+    sub_config = sp_config.add_subparsers(dest="config_cmd", required=True)
+    sub_config.add_parser("show")
+    p_set = sub_config.add_parser("set")
+    p_set.add_argument("key")
+    p_set.add_argument("value")
+
     sp_courses = sub.add_parser("courses")
     sub_courses = sp_courses.add_subparsers(dest="courses_cmd", required=True)
 
-    sub_courses.add_parser("list")
+    p_list = sub_courses.add_parser("list")
+    p_list.add_argument("--term-like", default=None)
 
     p_star = sub_courses.add_parser("star")
-    p_star.add_argument("indices", nargs="+", type=int)
+    p_star.add_argument("--term-like", default=None)
+    p_star.add_argument("--by-code", nargs="+", default=None, help="tokens matched against course_code+name")
+    p_star.add_argument("indices", nargs="*", type=int, help="course indices from 'courses list'")
 
     p_unstar = sub_courses.add_parser("unstar")
+    p_unstar.add_argument("--term-like", default=None)
     p_unstar.add_argument("indices", nargs="+", type=int)
 
     sub.add_parser("init")
@@ -89,6 +101,7 @@ def main() -> None:
     p_asg = sub_sync.add_parser("assignments")
     p_asg.add_argument("--days", type=int, default=14)
     p_asg.add_argument("--all", action="store_true")
+    p_asg.add_argument("--no-filter", action="store_true", help="disable noise filtering")
 
     p_qz = sub_sync.add_parser("quizzes")
     p_qz.add_argument("--days", type=int, default=14)
@@ -102,14 +115,28 @@ def main() -> None:
     if args.cmd == "healthcheck":
         raise SystemExit(cmd_healthcheck())
 
+    if args.cmd == "config":
+        s = load_settings()
+        if args.config_cmd == "show":
+            raise SystemExit(cmd_config_show(db_path=s.db_path))
+        if args.config_cmd == "set":
+            raise SystemExit(cmd_config_set(args.key, args.value, db_path=s.db_path))
+
     if args.cmd == "courses":
         s = load_settings()
         if args.courses_cmd == "list":
-            raise SystemExit(cmd_courses_list(db_path=s.db_path))
+            raise SystemExit(cmd_courses_list(db_path=s.db_path, term_like=args.term_like))
         if args.courses_cmd == "star":
-            raise SystemExit(cmd_courses_star(args.indices, db_path=s.db_path))
+            raise SystemExit(
+                cmd_courses_star(
+                    args.indices or None,
+                    db_path=s.db_path,
+                    by_code=args.by_code,
+                    term_like=args.term_like,
+                )
+            )
         if args.courses_cmd == "unstar":
-            raise SystemExit(cmd_courses_unstar(args.indices, db_path=s.db_path))
+            raise SystemExit(cmd_courses_unstar(args.indices, db_path=s.db_path, term_like=args.term_like))
 
     if args.cmd == "init":
         raise SystemExit(run_init(env_path=".env"))
@@ -142,6 +169,7 @@ def main() -> None:
                     days=args.days,
                     all_courses=args.all,
                     timezone=s.timezone,
+                    no_filter=args.no_filter,
                 )
             )
         if args.sync_cmd == "quizzes":
