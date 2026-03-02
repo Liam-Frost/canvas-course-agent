@@ -49,6 +49,12 @@ canvas-agent init
 ```
 
 ## Basic usage
+Helpful commands:
+```bash
+canvas-agent help
+canvas-agent healthcheck
+```
+
 1) Sync courses:
 ```bash
 canvas-agent sync courses
@@ -57,7 +63,8 @@ canvas-agent sync courses
 2) List and star important courses:
 ```bash
 canvas-agent courses list
-canvas-agent courses star 6 7 8
+canvas-agent courses star 1 2 3
+canvas-agent courses unstar 3
 ```
 
 3) Sync items (defaults to ⭐ courses only):
