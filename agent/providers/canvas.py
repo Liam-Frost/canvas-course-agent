@@ -90,3 +90,11 @@ class CanvasClient:
             params["context_codes[]"] = context_codes
 
         return list(self._paginate("/api/v1/calendar_events", params=params))
+
+    def list_assignments(self, course_id: int) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        return list(self._paginate(f"/api/v1/courses/{course_id}/assignments", params=params))
+
+    def list_quizzes(self, course_id: int) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        return list(self._paginate(f"/api/v1/courses/{course_id}/quizzes", params=params))

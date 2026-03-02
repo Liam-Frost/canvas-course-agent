@@ -32,6 +32,35 @@ CREATE TABLE IF NOT EXISTS calendar_items (
   raw_json TEXT NOT NULL,
   updated_at_local TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS starred_courses (
+  course_id INTEGER PRIMARY KEY,
+  starred_at_local TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS assignments (
+  id INTEGER PRIMARY KEY,
+  course_id INTEGER,
+  name TEXT,
+  due_at TEXT,
+  unlock_at TEXT,
+  lock_at TEXT,
+  html_url TEXT,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS quizzes (
+  id INTEGER PRIMARY KEY,
+  course_id INTEGER,
+  title TEXT,
+  due_at TEXT,
+  unlock_at TEXT,
+  lock_at TEXT,
+  html_url TEXT,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now'))
+);
 """
 
 
@@ -101,5 +130,89 @@ def upsert_calendar_item(conn: sqlite3.Connection, item: dict[str, Any]) -> None
             item.get("context_code"),
             item.get("html_url"),
             json.dumps(item, ensure_ascii=False),
+        ),
+    )
+
+
+def is_starred(conn: sqlite3.Connection, course_id: int) -> bool:
+    r = conn.execute("SELECT 1 FROM starred_courses WHERE course_id=?", (course_id,)).fetchone()
+    return r is not None
+
+
+def list_courses(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            "SELECT id, name, course_code, term_name FROM courses ORDER BY term_name, course_code, name"
+        ).fetchall()
+    )
+
+
+def list_starred_course_ids(conn: sqlite3.Connection) -> list[int]:
+    return [r[0] for r in conn.execute("SELECT course_id FROM starred_courses ORDER BY course_id").fetchall()]
+
+
+def star_course(conn: sqlite3.Connection, course_id: int) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO starred_courses (course_id) VALUES (?)",
+        (course_id,),
+    )
+
+
+def unstar_course(conn: sqlite3.Connection, course_id: int) -> None:
+    conn.execute("DELETE FROM starred_courses WHERE course_id=?", (course_id,))
+
+
+def upsert_assignment(conn: sqlite3.Connection, course_id: int, a: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO assignments (id, course_id, name, due_at, unlock_at, lock_at, html_url, raw_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          course_id=excluded.course_id,
+          name=excluded.name,
+          due_at=excluded.due_at,
+          unlock_at=excluded.unlock_at,
+          lock_at=excluded.lock_at,
+          html_url=excluded.html_url,
+          raw_json=excluded.raw_json,
+          updated_at_local=datetime('now');
+        """,
+        (
+            a.get("id"),
+            course_id,
+            a.get("name"),
+            a.get("due_at"),
+            a.get("unlock_at"),
+            a.get("lock_at"),
+            a.get("html_url"),
+            json.dumps(a, ensure_ascii=False),
+        ),
+    )
+
+
+def upsert_quiz(conn: sqlite3.Connection, course_id: int, q: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO quizzes (id, course_id, title, due_at, unlock_at, lock_at, html_url, raw_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          course_id=excluded.course_id,
+          title=excluded.title,
+          due_at=excluded.due_at,
+          unlock_at=excluded.unlock_at,
+          lock_at=excluded.lock_at,
+          html_url=excluded.html_url,
+          raw_json=excluded.raw_json,
+          updated_at_local=datetime('now');
+        """,
+        (
+            q.get("id"),
+            course_id,
+            q.get("title"),
+            q.get("due_at"),
+            q.get("unlock_at"),
+            q.get("lock_at"),
+            q.get("html_url"),
+            json.dumps(q, ensure_ascii=False),
         ),
     )
