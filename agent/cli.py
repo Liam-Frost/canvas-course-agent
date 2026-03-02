@@ -11,6 +11,7 @@ from .courses import cmd_courses_list, cmd_courses_star, cmd_courses_unstar
 from .providers.canvas import CanvasClient
 from .sync import sync_calendar, sync_courses
 from .sync_items import sync_assignments, sync_quizzes
+from .upcoming import upcoming
 
 console = Console()
 
@@ -67,6 +68,10 @@ def main() -> None:
     p_unstar = sub_courses.add_parser("unstar")
     p_unstar.add_argument("indices", nargs="+", type=int)
 
+    p_up = sub.add_parser("upcoming")
+    p_up.add_argument("--days", type=int, default=14)
+    p_up.add_argument("--all", action="store_true")
+
     sp_sync = sub.add_parser("sync")
     sub_sync = sp_sync.add_subparsers(dest="sync_cmd", required=True)
 
@@ -97,6 +102,10 @@ def main() -> None:
             raise SystemExit(cmd_courses_star(args.indices, db_path=s.db_path))
         if args.courses_cmd == "unstar":
             raise SystemExit(cmd_courses_unstar(args.indices, db_path=s.db_path))
+
+    if args.cmd == "upcoming":
+        s = load_settings()
+        raise SystemExit(upcoming(db_path=s.db_path, days=args.days, all_courses=args.all, timezone=s.timezone))
 
     if args.cmd == "sync":
         s = load_settings()
