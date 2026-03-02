@@ -12,6 +12,7 @@ from .courses import cmd_courses_list, cmd_courses_star, cmd_courses_unstar
 from .providers.canvas import CanvasClient
 from .sync import sync_calendar, sync_courses
 from .sync_items import sync_assignments, sync_quizzes
+from .export_cmd import export_ics, export_md
 from .init_wizard import run_init
 from .upcoming import upcoming
 
@@ -84,6 +85,19 @@ def main() -> None:
 
     sub.add_parser("init")
 
+    sp_export = sub.add_parser("export")
+    sub_export = sp_export.add_subparsers(dest="export_cmd", required=True)
+
+    p_ics = sub_export.add_parser("ics")
+    p_ics.add_argument("--days", type=int, default=30)
+    p_ics.add_argument("--all", action="store_true")
+    p_ics.add_argument("--out", default="./export/canvas.ics")
+
+    p_md = sub_export.add_parser("md")
+    p_md.add_argument("--days", type=int, default=30)
+    p_md.add_argument("--all", action="store_true")
+    p_md.add_argument("--out-dir", default="./export/md")
+
     p_up = sub.add_parser("upcoming")
     p_up.add_argument("--days", type=int, default=14)
     p_up.add_argument("--all", action="store_true")
@@ -140,6 +154,13 @@ def main() -> None:
 
     if args.cmd == "init":
         raise SystemExit(run_init(env_path=".env"))
+
+    if args.cmd == "export":
+        s = load_settings()
+        if args.export_cmd == "ics":
+            raise SystemExit(export_ics(db_path=s.db_path, out_path=args.out, days=args.days, all_courses=args.all))
+        if args.export_cmd == "md":
+            raise SystemExit(export_md(db_path=s.db_path, out_dir=args.out_dir, days=args.days, all_courses=args.all))
 
     if args.cmd == "upcoming":
         s = load_settings()

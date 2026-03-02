@@ -9,7 +9,8 @@ This is meant to work with **any** Canvas instance (e.g. `https://canvas.ubc.ca`
 - Import deadlines (assignments/quizzes/calendar items)
 - Let you pick “important courses” (starred) and only sync/remind for those
 - Store locally (SQLite)
-- Send reminders to Discord (webhook for now)
+- Export to iCalendar (.ics) and Markdown
+- Send reminders to Discord (webhook for now) (TODO)
 
 ## Configuration
 This project is **multi-school** by design.
@@ -89,6 +90,15 @@ canvas-agent sync assignments --days 14 --no-filter
 4) Show upcoming (merged view):
 ```bash
 canvas-agent upcoming --days 14
+```
+
+5) Export:
+```bash
+# calendar file
+canvas-agent export ics --days 30 --out ./export/canvas.ics
+
+# course archive
+canvas-agent export md --days 30 --out-dir ./export/md
 ```
 
 If you want to fetch for all courses (debug):
