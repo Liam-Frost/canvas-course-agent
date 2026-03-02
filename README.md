@@ -53,6 +53,8 @@ Helpful commands:
 ```bash
 canvas-agent help
 canvas-agent healthcheck
+canvas-agent config show
+canvas-agent config set filter.assignments on
 ```
 
 1) Sync courses:
@@ -63,7 +65,14 @@ canvas-agent sync courses
 2) List and star important courses:
 ```bash
 canvas-agent courses list
+canvas-agent courses list --term-like 2025W2
+
+# by index
 canvas-agent courses star 1 2 3
+
+# by-code token matching (case-insensitive AND over course_code + name)
+canvas-agent courses star --by-code CPEN 212
+
 canvas-agent courses unstar 3
 ```
 
@@ -72,6 +81,9 @@ canvas-agent courses unstar 3
 canvas-agent sync assignments --days 14
 canvas-agent sync quizzes --days 14
 canvas-agent sync calendar --days 14
+
+# disable noise filtering for a run
+canvas-agent sync assignments --days 14 --no-filter
 ```
 
 4) Show upcoming (merged view):

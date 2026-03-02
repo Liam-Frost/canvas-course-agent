@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS quizzes (
   raw_json TEXT NOT NULL,
   updated_at_local TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now'))
+);
 """
 
 
@@ -187,6 +193,21 @@ def upsert_assignment(conn: sqlite3.Connection, course_id: int, a: dict[str, Any
             a.get("html_url"),
             json.dumps(a, ensure_ascii=False),
         ),
+    )
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str | None = None) -> str | None:
+    r = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return (r[0] if r else default)
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at_local=datetime('now');
+        """,
+        (key, value),
     )
 
 

@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .providers.canvas import CanvasClient
-from .storage.sqlite import connect, list_courses, list_starred_course_ids, upsert_assignment, upsert_quiz
+from .storage.sqlite import connect, get_setting, list_courses, list_starred_course_ids, upsert_assignment, upsert_quiz
 from .timeutil import fmt_canvas_dt_2line, get_tz, tz_label, parse_canvas_dt
 
 console = Console()
@@ -19,6 +19,7 @@ def sync_assignments(
     days: int = 14,
     all_courses: bool = False,
     timezone: str = "UTC",
+    no_filter: bool = False,
 ) -> int:
     conn = connect(db_path)
     course_rows = list_courses(conn)
@@ -43,8 +44,20 @@ def sync_assignments(
         for cid in course_ids:
             items = client.list_assignments(int(cid))
             total += len(items)
+            filter_on = (get_setting(conn, "filter.assignments", default="on") or "on") == "on"
+            if no_filter:
+                filter_on = False
+
             for a in items:
                 upsert_assignment(conn, int(cid), a)
+
+                if filter_on:
+                    # Common noise: undated items, or items that are not actually submitted.
+                    if not a.get("due_at"):
+                        continue
+                    if "none" in (a.get("submission_types") or []):
+                        continue
+
                 due = a.get("due_at")
                 if not due:
                     continue
