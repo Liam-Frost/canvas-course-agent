@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL,
   updated_at_local TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS notifications_sent (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  channel TEXT NOT NULL,
+  remind_at TEXT NOT NULL,
+  sent_at_local TEXT DEFAULT (datetime('now')),
+  UNIQUE(kind, item_id, channel, remind_at)
+);
 """
 
 

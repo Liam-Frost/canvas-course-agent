@@ -101,6 +101,18 @@ canvas-agent export ics --days 30 --out ./export/canvas.ics
 canvas-agent export md --days 30 --out-dir ./export/md
 ```
 
+6) Telegram link + reminders:
+```bash
+# After sending /start to your bot
+canvas-agent telegram link
+
+# Preview reminders that would fire soon
+canvas-agent remind run --lookahead-min 120
+
+# Actually send
+canvas-agent remind run --lookahead-min 2 --send-discord --send-telegram
+```
+
 If you want to fetch for all courses (debug):
 ```bash
 canvas-agent sync assignments --days 14 --all
