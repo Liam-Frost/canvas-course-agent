@@ -14,6 +14,8 @@ from .sync import sync_calendar, sync_courses
 from .sync_items import sync_assignments, sync_quizzes
 from .export_cmd import export_ics, export_md
 from .init_wizard import run_init
+from .remind import remind_run
+from .telegram_cmd import telegram_link
 from .upcoming import upcoming
 
 console = Console()
@@ -28,6 +30,7 @@ def load_settings() -> Settings:
         canvas_access_token=os.getenv("CANVAS_ACCESS_TOKEN", ""),
         db_path=os.getenv("DB_PATH", "./data/agent.db"),
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL") or None,
+        telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN") or None,
         timezone=os.getenv("TIMEZONE", "UTC"),
     )
 
@@ -84,6 +87,18 @@ def main() -> None:
     p_unstar.add_argument("indices", nargs="+", type=int)
 
     sub.add_parser("init")
+
+    sp_telegram = sub.add_parser("telegram")
+    sub_tg = sp_telegram.add_subparsers(dest="telegram_cmd", required=True)
+    sub_tg.add_parser("link")
+
+    sp_remind = sub.add_parser("remind")
+    sub_remind = sp_remind.add_subparsers(dest="remind_cmd", required=True)
+    p_run = sub_remind.add_parser("run")
+    p_run.add_argument("--lookahead-min", type=int, default=2)
+    p_run.add_argument("--dry-run", action="store_true")
+    p_run.add_argument("--send-discord", action="store_true")
+    p_run.add_argument("--send-telegram", action="store_true")
 
     sp_export = sub.add_parser("export")
     sub_export = sp_export.add_subparsers(dest="export_cmd", required=True)
@@ -154,6 +169,34 @@ def main() -> None:
 
     if args.cmd == "init":
         raise SystemExit(run_init(env_path=".env"))
+
+    if args.cmd == "telegram":
+        s = load_settings()
+        if args.telegram_cmd == "link":
+            raise SystemExit(telegram_link(db_path=s.db_path, bot_token=s.telegram_bot_token or ""))
+
+    if args.cmd == "remind":
+        s = load_settings()
+        if args.remind_cmd == "run":
+            # default dry-run unless explicit send
+            dry = True
+            if args.send_discord or args.send_telegram:
+                dry = False
+            if args.dry_run:
+                dry = True
+
+            raise SystemExit(
+                remind_run(
+                    db_path=s.db_path,
+                    timezone=s.timezone,
+                    lookahead_min=args.lookahead_min,
+                    send_discord=args.send_discord,
+                    send_telegram=args.send_telegram,
+                    dry_run=dry,
+                    discord_webhook_url=s.discord_webhook_url,
+                    telegram_bot_token=s.telegram_bot_token,
+                )
+            )
 
     if args.cmd == "export":
         s = load_settings()
