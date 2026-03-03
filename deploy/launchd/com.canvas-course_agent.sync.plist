@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.canvas-course-agent.sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <!-- Edit the cd path + env path for your install -->
+    <string>cd "$HOME/canvas-course-agent" && canvas-agent --env-path .env sync courses && canvas-agent --env-path .env sync assignments --days 60 && canvas-agent --env-path .env sync quizzes --days 60</string>
+  </array>
+
+  <!-- Daily at 00:00 local time -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>0</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>$HOME/Library/Logs/canvas-course-agent-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>$HOME/Library/Logs/canvas-course-agent-sync.err.log</string>
+</dict>
+</plist>

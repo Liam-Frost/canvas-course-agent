@@ -1,0 +1,11 @@
+[Unit]
+Description=Canvas Course Agent - Reminder schedule
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=canvas-agent-remind.service
+
+[Install]
+WantedBy=timers.target

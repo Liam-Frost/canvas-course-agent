@@ -1,0 +1,10 @@
+[Unit]
+Description=Canvas Course Agent - Daily sync schedule
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+Persistent=true
+Unit=canvas-agent-sync.service
+
+[Install]
+WantedBy=timers.target
