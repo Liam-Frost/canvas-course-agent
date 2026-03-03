@@ -22,10 +22,10 @@ from .upcoming import upcoming
 console = Console()
 
 
-def load_settings() -> Settings:
+def load_settings(env_path: str) -> Settings:
     # When executed via heredoc / embedded contexts, python-dotenv can mis-detect paths.
     # Be explicit.
-    load_dotenv(dotenv_path=".env")
+    load_dotenv(dotenv_path=env_path)
     return Settings(
         canvas_base_url=os.getenv("CANVAS_BASE_URL", "https://canvas.ubc.ca"),
         canvas_access_token=os.getenv("CANVAS_ACCESS_TOKEN", ""),
@@ -42,8 +42,8 @@ def canvas_client(s: Settings) -> CanvasClient:
     return CanvasClient(base_url=s.canvas_base_url, access_token=s.canvas_access_token)
 
 
-def cmd_healthcheck() -> int:
-    s = load_settings()
+def cmd_healthcheck(env_path: str) -> int:
+    s = load_settings(env_path)
     console.print("canvas_base_url:", s.canvas_base_url)
     console.print("db_path:", s.db_path)
     console.print("discord_webhook_url set:", bool(s.discord_webhook_url))
@@ -60,6 +60,11 @@ def main() -> None:
     import argparse
 
     p = argparse.ArgumentParser(prog="canvas-agent", description="Canvas Course Agent")
+    p.add_argument(
+        "--env-path",
+        default=os.getenv("CANVAS_AGENT_ENV", ".env"),
+        help="Path to .env file (default: .env or CANVAS_AGENT_ENV)",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("help")
@@ -152,22 +157,23 @@ def main() -> None:
     p_qz.add_argument("--all", action="store_true")
 
     args = p.parse_args()
+    env_path = args.env_path
     if args.cmd == "help":
         p.print_help()
         raise SystemExit(0)
 
     if args.cmd == "healthcheck":
-        raise SystemExit(cmd_healthcheck())
+        raise SystemExit(cmd_healthcheck(env_path))
 
     if args.cmd == "config":
-        s = load_settings()
+        s = load_settings(env_path)
         if args.config_cmd == "show":
             raise SystemExit(cmd_config_show(db_path=s.db_path))
         if args.config_cmd == "set":
             raise SystemExit(cmd_config_set(args.key, args.value, db_path=s.db_path))
 
     if args.cmd == "courses":
-        s = load_settings()
+        s = load_settings(env_path)
         if args.courses_cmd == "list":
             raise SystemExit(cmd_courses_list(db_path=s.db_path, term_like=args.term_like))
         if args.courses_cmd == "star":
@@ -183,15 +189,15 @@ def main() -> None:
             raise SystemExit(cmd_courses_unstar(args.indices, db_path=s.db_path, term_like=args.term_like))
 
     if args.cmd == "init":
-        raise SystemExit(run_init(env_path=".env"))
+        raise SystemExit(run_init(env_path=env_path))
 
     if args.cmd == "telegram":
-        s = load_settings()
+        s = load_settings(env_path)
         if args.telegram_cmd == "link":
             raise SystemExit(telegram_link(db_path=s.db_path, bot_token=s.telegram_bot_token or ""))
 
     if args.cmd == "remind":
-        s = load_settings()
+        s = load_settings(env_path)
         if args.remind_cmd == "add":
             raise SystemExit(
                 cmd_remind_add(
@@ -231,18 +237,18 @@ def main() -> None:
             )
 
     if args.cmd == "export":
-        s = load_settings()
+        s = load_settings(env_path)
         if args.export_cmd == "ics":
             raise SystemExit(export_ics(db_path=s.db_path, out_path=args.out, days=args.days, all_courses=args.all))
         if args.export_cmd == "md":
             raise SystemExit(export_md(db_path=s.db_path, out_dir=args.out_dir, days=args.days, all_courses=args.all))
 
     if args.cmd == "upcoming":
-        s = load_settings()
+        s = load_settings(env_path)
         raise SystemExit(upcoming(db_path=s.db_path, days=args.days, all_courses=args.all, timezone=s.timezone))
 
     if args.cmd == "sync":
-        s = load_settings()
+        s = load_settings(env_path)
         client = canvas_client(s)
         if args.sync_cmd == "courses":
             raise SystemExit(sync_courses(client, db_path=s.db_path))

@@ -49,6 +49,11 @@ Run the init wizard to generate `.env`:
 canvas-agent init
 ```
 
+If you keep your `.env` elsewhere:
+```bash
+canvas-agent --env-path /path/to/.env init
+```
+
 ## Basic usage
 Helpful commands:
 ```bash
@@ -126,8 +131,12 @@ canvas-agent config set remind.discord.enabled on
 canvas-agent config set remind.telegram.enabled on
 ```
 
-## Scheduling (systemd timer on Linux)
-This repo ships no installer yet; on a server you can schedule sync + reminders with systemd.
+## Scheduling
+This repo ships no installer yet; on a server you can schedule sync + reminders.
+
+See `deploy/` for templates (systemd/launchd/Windows Task Scheduler).
+
+### Linux (systemd timer)
 
 Create a oneshot service + timer that runs every minute:
 
