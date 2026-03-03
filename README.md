@@ -111,6 +111,19 @@ canvas-agent remind run --lookahead-min 120
 
 # Actually send
 canvas-agent remind run --lookahead-min 2 --send-discord --send-telegram
+
+# Custom reminders
+canvas-agent remind add --title "Go to work" --at "2026-03-05 13:00" --channels discord
+canvas-agent remind add --title "Stretch" --in 90m --channels telegram --silent
+canvas-agent remind list
+canvas-agent remind disable 1
+```
+
+Global toggles:
+```bash
+canvas-agent config set remind.enabled on
+canvas-agent config set remind.discord.enabled on
+canvas-agent config set remind.telegram.enabled on
 ```
 
 If you want to fetch for all courses (debug):

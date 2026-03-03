@@ -15,6 +15,7 @@ from .sync_items import sync_assignments, sync_quizzes
 from .export_cmd import export_ics, export_md
 from .init_wizard import run_init
 from .remind import remind_run
+from .remind_custom import cmd_remind_add, cmd_remind_disable, cmd_remind_list
 from .telegram_cmd import telegram_link
 from .upcoming import upcoming
 
@@ -94,6 +95,20 @@ def main() -> None:
 
     sp_remind = sub.add_parser("remind")
     sub_remind = sp_remind.add_subparsers(dest="remind_cmd", required=True)
+
+    p_add = sub_remind.add_parser("add")
+    p_add.add_argument("--title", required=True)
+    g = p_add.add_mutually_exclusive_group(required=True)
+    g.add_argument("--at", help='local time in TIMEZONE, e.g. "2026-03-05 13:00"')
+    g.add_argument("--in", dest="in_", help='relative time, e.g. 90m or 2h')
+    p_add.add_argument("--channels", default="discord,telegram")
+    p_add.add_argument("--silent", action="store_true", help="telegram only")
+
+    sub_remind.add_parser("list")
+
+    p_dis = sub_remind.add_parser("disable")
+    p_dis.add_argument("id", type=int)
+
     p_run = sub_remind.add_parser("run")
     p_run.add_argument("--lookahead-min", type=int, default=2)
     p_run.add_argument("--dry-run", action="store_true")
@@ -177,6 +192,23 @@ def main() -> None:
 
     if args.cmd == "remind":
         s = load_settings()
+        if args.remind_cmd == "add":
+            raise SystemExit(
+                cmd_remind_add(
+                    db_path=s.db_path,
+                    timezone=s.timezone,
+                    title=args.title,
+                    at=args.at,
+                    in_=args.in_,
+                    channels=args.channels,
+                    silent=args.silent,
+                )
+            )
+        if args.remind_cmd == "list":
+            raise SystemExit(cmd_remind_list(db_path=s.db_path, timezone=s.timezone))
+        if args.remind_cmd == "disable":
+            raise SystemExit(cmd_remind_disable(db_path=s.db_path, reminder_id=args.id))
+
         if args.remind_cmd == "run":
             # default dry-run unless explicit send
             dry = True

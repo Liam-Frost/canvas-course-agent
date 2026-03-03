@@ -10,6 +10,12 @@ console = Console()
 
 KNOWN_KEYS = {
     "filter.assignments": "on|off",
+    "remind.enabled": "on|off",
+    "remind.discord.enabled": "on|off",
+    "remind.telegram.enabled": "on|off",
+    "remind.assignment.offsets": "comma-separated minutes (e.g. 60,1440)",
+    "remind.quiz.offsets_loud": "comma-separated minutes (e.g. 60)",
+    "remind.quiz.offsets_silent": "comma-separated minutes (e.g. 10)",
 }
 
 
@@ -30,7 +36,7 @@ def cmd_config_show(*, db_path: str) -> int:
 
 
 def cmd_config_set(key: str, value: str, *, db_path: str) -> int:
-    if key in KNOWN_KEYS:
+    if key in KNOWN_KEYS and KNOWN_KEYS[key] == "on|off":
         if value not in {"on", "off"}:
             raise SystemExit(f"{key} expects on|off")
     conn = connect(db_path)
