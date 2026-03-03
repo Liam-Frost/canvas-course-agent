@@ -20,12 +20,12 @@ console = Console()
 class Reminder:
     channel: str  # discord|telegram
     silent: bool
-    kind: str  # assignment|quiz
+    kind: str  # assignment|quiz|custom
     item_id: int
     course_name: str
     title: str
     when: datetime  # trigger time (UTC)
-    ref_time: datetime  # due/unlock time (UTC)
+    ref_time: datetime  # due/unlock/at time (UTC)
     url: str
 
 
@@ -90,6 +90,9 @@ def _candidate_reminders(
     quiz_loud = _parse_offsets(get_setting(conn, "remind.quiz.offsets_loud", "60"), [60])
     quiz_silent = _parse_offsets(get_setting(conn, "remind.quiz.offsets_silent", "10"), [10])
 
+    discord_enabled = (get_setting(conn, "remind.discord.enabled", "on") or "on") == "on"
+    telegram_enabled = (get_setting(conn, "remind.telegram.enabled", "on") or "on") == "on"
+
     # Quizzes: use unlock_at as primary reference
     quiz_rows = conn.execute(
         "SELECT id, course_id, title, raw_json FROM quizzes WHERE course_id IN (%s)" % ",".join("?" * len(course_ids)),
@@ -117,6 +120,10 @@ def _candidate_reminders(
             if not (now <= when <= look_end):
                 continue
             for ch in ("discord", "telegram"):
+                if ch == "discord" and not discord_enabled:
+                    continue
+                if ch == "telegram" and not telegram_enabled:
+                    continue
                 yield Reminder(
                     channel=ch,
                     silent=False,
@@ -133,6 +140,8 @@ def _candidate_reminders(
             when = ref - timedelta(minutes=off)
             if not (now <= when <= look_end):
                 continue
+            if not telegram_enabled:
+                continue
             yield Reminder(
                 channel="telegram",
                 silent=True,
@@ -143,6 +152,43 @@ def _candidate_reminders(
                 when=when,
                 ref_time=ref,
                 url=str(raw.get("html_url") or ""),
+            )
+
+    # Custom reminders
+    custom_rows = conn.execute(
+        "SELECT id, title, at_utc, channels, silent FROM custom_reminders WHERE enabled=1"
+    ).fetchall()
+
+    for r in custom_rows:
+        at_utc = datetime.fromisoformat(r["at_utc"])
+        if not (now <= at_utc <= look_end):
+            continue
+        channels = {c.strip().lower() for c in str(r["channels"] or "").split(",") if c.strip()}
+        silent = bool(r["silent"])
+
+        if "discord" in channels and discord_enabled:
+            yield Reminder(
+                channel="discord",
+                silent=False,
+                kind="custom",
+                item_id=int(r["id"]),
+                course_name="(custom)",
+                title=str(r["title"]),
+                when=at_utc,
+                ref_time=at_utc,
+                url="",
+            )
+        if "telegram" in channels and telegram_enabled:
+            yield Reminder(
+                channel="telegram",
+                silent=silent,
+                kind="custom",
+                item_id=int(r["id"]),
+                course_name="(custom)",
+                title=str(r["title"]),
+                when=at_utc,
+                ref_time=at_utc,
+                url="",
             )
 
     # Assignments: use due_at (but skip those that are represented by quizzes)
@@ -164,28 +210,31 @@ def _candidate_reminders(
             when = due - timedelta(minutes=off)
             if not (now <= when <= look_end):
                 continue
-            yield Reminder(
-                channel="discord",
-                silent=False,
-                kind="assignment",
-                item_id=asg_id,
-                course_name=course_name_by_id.get(int(r[1]), str(r[1])),
-                title=str(r[2] or ""),
-                when=when,
-                ref_time=due,
-                url=str(r[4] or ""),
-            )
-            yield Reminder(
-                channel="telegram",
-                silent=False,
-                kind="assignment",
-                item_id=asg_id,
-                course_name=course_name_by_id.get(int(r[1]), str(r[1])),
-                title=str(r[2] or ""),
-                when=when,
-                ref_time=due,
-                url=str(r[4] or ""),
-            )
+            if discord_enabled:
+                yield Reminder(
+                    channel="discord",
+                    silent=False,
+                    kind="assignment",
+                    item_id=asg_id,
+                    course_name=course_name_by_id.get(int(r[1]), str(r[1])),
+                    title=str(r[2] or ""),
+                    when=when,
+                    ref_time=due,
+                    url=str(r[4] or ""),
+                )
+
+            if telegram_enabled:
+                yield Reminder(
+                    channel="telegram",
+                    silent=False,
+                    kind="assignment",
+                    item_id=asg_id,
+                    course_name=course_name_by_id.get(int(r[1]), str(r[1])),
+                    title=str(r[2] or ""),
+                    when=when,
+                    ref_time=due,
+                    url=str(r[4] or ""),
+                )
 
 
 def remind_run(
@@ -201,14 +250,18 @@ def remind_run(
 ) -> int:
     conn = connect(db_path)
 
+    remind_enabled = (get_setting(conn, "remind.enabled", "on") or "on") == "on"
+    if not remind_enabled:
+        console.print("Reminders are globally disabled (remind.enabled=off).")
+        return 0
+
     tz = get_tz(timezone)
     tzs = tz_label(tz)
-
 
     reminders = list(_candidate_reminders(conn=conn, lookahead_min=lookahead_min, timezone=timezone))
 
     t = Table(title=f"Reminders (lookahead {lookahead_min} min)")
-    t.add_column(f"when\n(UTC)")
+    t.add_column("when\n(UTC)")
     t.add_column("channel")
     t.add_column("silent")
     t.add_column("type")

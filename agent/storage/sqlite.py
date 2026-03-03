@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS notifications_sent (
   sent_at_local TEXT DEFAULT (datetime('now')),
   UNIQUE(kind, item_id, channel, remind_at)
 );
+
+CREATE TABLE IF NOT EXISTS custom_reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  at_utc TEXT NOT NULL,
+  channels TEXT NOT NULL, -- comma separated: discord,telegram
+  silent INTEGER DEFAULT 0,
+  enabled INTEGER DEFAULT 1,
+  created_at_local TEXT DEFAULT (datetime('now'))
+);
 """
 
 
