@@ -31,8 +31,21 @@ DB_PATH=./data/agent.db
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
+## Install (recommended)
+Use `pipx` so you don’t have to manage venvs manually:
+
+```bash
+pipx install git+https://github.com/Liam-Frost/canvas-course-agent
+```
+
+Upgrade later:
+```bash
+pipx upgrade canvas-course-agent
+```
+
 ## Dev quickstart
 ```bash
+git clone https://github.com/Liam-Frost/canvas-course-agent
 cd canvas-course-agent
 python3 -m venv .venv
 source .venv/bin/activate
@@ -132,9 +145,9 @@ canvas-agent config set remind.telegram.enabled on
 ```
 
 ## Scheduling
-This repo ships no installer yet; on a server you can schedule sync + reminders.
-
-See `deploy/` for templates (systemd/launchd/Windows Task Scheduler).
+You have two options:
+- Use your OS scheduler (recommended): see `deploy/` for templates (systemd/launchd/Windows Task Scheduler)
+- Or just run `canvas-agent remind run ...` manually
 
 ### Linux (systemd timer)
 
