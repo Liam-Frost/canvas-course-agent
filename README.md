@@ -127,7 +127,7 @@ canvas-agent config set remind.telegram.enabled on
 ```
 
 ## Scheduling (systemd timer on Linux)
-This repo ships no installer yet; on a server you can schedule reminders with systemd.
+This repo ships no installer yet; on a server you can schedule sync + reminders with systemd.
 
 Create a oneshot service + timer that runs every minute:
 
@@ -147,6 +147,22 @@ journalctl -u canvas-agent-remind.service -n 50 --no-pager
 Tip: to send only to Discord, set:
 ```bash
 canvas-agent config set remind.telegram.enabled off
+```
+
+### Daily Canvas sync
+Create a daily sync timer (00:00 server time):
+
+- Service: `/etc/systemd/system/canvas-agent-sync.service`
+- Timer: `/etc/systemd/system/canvas-agent-sync.timer`
+
+Enable:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now canvas-agent-sync.timer
+
+# inspect
+systemctl list-timers --all | grep canvas-agent-sync
+journalctl -u canvas-agent-sync.service -n 50 --no-pager
 ```
 
 If you want to fetch for all courses (debug):
