@@ -119,6 +119,15 @@ canvas-agent export ics --days 30 --out ./export/canvas.ics
 canvas-agent export md --days 30 --out-dir ./export/md
 ```
 
+6) Digest push (Discord)
+```bash
+# Print digest
+canvas-agent digest --days 7
+
+# Send digest to Discord webhook
+canvas-agent digest --days 7 --send-discord
+```
+
 6) Telegram link + reminders:
 ```bash
 # After sending /start to your bot
@@ -176,6 +185,12 @@ Create a daily sync timer (00:00 server time):
 
 - Service: `/etc/systemd/system/canvas-agent-sync.service`
 - Timer: `/etc/systemd/system/canvas-agent-sync.timer`
+
+### Digest push schedule
+Templates are in `deploy/systemd/`:
+- `canvas-agent-digest.service`
+- `canvas-agent-digest-weekly.timer` (calendar-based)
+- `canvas-agent-digest-every7d.timer` (every 7 days from activation)
 
 Enable:
 ```bash

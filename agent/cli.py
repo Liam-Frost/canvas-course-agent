@@ -12,6 +12,7 @@ from .courses import cmd_courses_list, cmd_courses_star, cmd_courses_unstar
 from .providers.canvas import CanvasClient
 from .sync import sync_calendar, sync_courses
 from .sync_items import sync_assignments, sync_quizzes
+from .digest import cmd_digest
 from .export_cmd import export_ics, export_md
 from .init_wizard import run_init
 from .remind import remind_run
@@ -119,6 +120,11 @@ def main() -> None:
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--send-discord", action="store_true")
     p_run.add_argument("--send-telegram", action="store_true")
+
+    p_digest = sub.add_parser("digest")
+    p_digest.add_argument("--days", type=int, default=7)
+    p_digest.add_argument("--all", action="store_true")
+    p_digest.add_argument("--send-discord", action="store_true")
 
     sp_export = sub.add_parser("export")
     sub_export = sp_export.add_subparsers(dest="export_cmd", required=True)
@@ -235,6 +241,19 @@ def main() -> None:
                     telegram_bot_token=s.telegram_bot_token,
                 )
             )
+
+    if args.cmd == "digest":
+        s = load_settings(env_path)
+        raise SystemExit(
+            cmd_digest(
+                db_path=s.db_path,
+                days=args.days,
+                all_courses=args.all,
+                timezone=s.timezone,
+                discord_webhook_url=s.discord_webhook_url,
+                send_discord=args.send_discord,
+            )
+        )
 
     if args.cmd == "export":
         s = load_settings(env_path)

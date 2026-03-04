@@ -1,0 +1,14 @@
+[Unit]
+Description=Canvas Course Agent - Digest push
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=openclaw
+Group=openclaw
+WorkingDirectory=/var/lib/openclaw/.openclaw/workspace/canvas-course-agent
+Environment=HOME=/var/lib/openclaw
+Environment=PATH=/var/lib/openclaw/.openclaw/workspace/canvas-course-agent/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=/var/lib/openclaw/.openclaw/workspace/canvas-course-agent/.venv/bin/canvas-agent --env-path .env digest --days 7 --send-discord

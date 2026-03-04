@@ -1,0 +1,11 @@
+[Unit]
+Description=Canvas Course Agent - Digest every 7 days from activation
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=7d
+Persistent=true
+Unit=canvas-agent-digest.service
+
+[Install]
+WantedBy=timers.target
