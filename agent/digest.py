@@ -209,7 +209,9 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     for d in dates:
         lines.append("")
         lines.append(f"**{heading(d)}**")
-        for it in grouped[d]:
+
+        day_items = grouped[d]
+        for idx, it in enumerate(day_items):
             kind_label = icon.get(it.kind, f"[{it.kind}]")
 
             # Multi-line, field-first layout:
@@ -226,7 +228,11 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
                 loc = dt.astimezone(tz).replace(microsecond=0)
                 return loc.strftime("%H:%M")
 
-            tzabbr = (start_dt.astimezone(tz).tzname() if start_dt else datetime.now(UTC).astimezone(tz).tzname()) or tzs
+            tzabbr = (
+                start_dt.astimezone(tz).tzname()
+                if start_dt
+                else datetime.now(UTC).astimezone(tz).tzname()
+            ) or tzs
 
             # Quiz: show start–end (preferred); fallback to due.
             if it.kind == "quiz" and start_dt:
@@ -253,6 +259,9 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
             if it.url:
                 lines.append(f"  Link: [Open]({it.url})")
 
+            # Visual separation between tasks on the same day (Discord markdown is… cramped).
+            if idx != len(day_items) - 1:
+                lines.append("  ─────────────")
     return "\n".join(lines)
 
 
