@@ -123,14 +123,16 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
             continue
 
         cid = int(r["course_id"])
+        due_s = str(r["due_at"] or "")
         items.append(
             DigestItem(
                 kind="assignment",
                 course=course_name_by_id.get(cid, str(cid)),
                 title=str(r["name"] or ""),
-                start_at=str(r["unlock_at"] or ""),
+                # For digest purposes, assignments should be keyed/sorted by due time.
+                start_at=due_s,
                 end_at="",
-                due_at=str(r["due_at"] or ""),
+                due_at=due_s,
                 url=str(r["html_url"] or ""),
             )
         )
@@ -173,7 +175,10 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     # Group by local date for readability
     grouped: dict[str, list[DigestItem]] = {}
     def _ref_dt(it: DigestItem):
-        return parse_canvas_dt(it.start_at) or parse_canvas_dt(it.due_at)
+        # Quizzes are keyed by start (unlock). Assignments/custom are keyed by due/at.
+        if it.kind == "quiz":
+            return parse_canvas_dt(it.start_at) or parse_canvas_dt(it.due_at)
+        return parse_canvas_dt(it.due_at) or parse_canvas_dt(it.start_at)
 
     for it in items:
         dt = _ref_dt(it)
@@ -185,6 +190,17 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
 
     dates = sorted(grouped.keys())
 
+    def heading(date_iso: str) -> str:
+        if date_iso == "(unknown date)":
+            return date_iso
+        dt = datetime.fromisoformat(date_iso + "T00:00:00+00:00").astimezone(tz)
+        dow = dt.strftime("%a")  # Mon/Tue
+        if days >= 28:
+            # week-of-month (1-5)
+            wom = (dt.day - 1) // 7 + 1
+            return f"{date_iso}  |  Week {wom}  |  {dow}"
+        return f"{date_iso} ({dow})"
+
     lines: list[str] = []
     lines.append(f"**Upcoming {days} days** ({tzs})")
 
@@ -192,7 +208,7 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
 
     for d in dates:
         lines.append("")
-        lines.append(f"**{d}**")
+        lines.append(f"**{heading(d)}**")
         for it in grouped[d]:
             kind_label = icon.get(it.kind, f"[{it.kind}]")
 
