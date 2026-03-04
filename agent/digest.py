@@ -134,20 +134,59 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     if not items:
         return f"No upcoming items in next {days} days. ({tzs})"
 
-    lines: list[str] = []
-    lines.append(f"Upcoming {days} days ({tzs})")
-
+    # Group by local date for readability
+    grouped: dict[str, list[DigestItem]] = {}
     for it in items:
-        when = fmt_canvas_dt_2line(it.start_at or it.due_at, tz)
-        # flatten to single line for Discord readability
-        when_one = when.replace("\n", " ")
-        line = f"[{it.kind}] {it.course}: {it.title} — {when_one}"
-        if it.url:
-            line += f"\n{it.url}"
-        lines.append(line)
+        dt = parse_canvas_dt(it.start_at or it.due_at)
+        if not dt:
+            key = "(unknown date)"
+        else:
+            key = dt.astimezone(tz).date().isoformat()
+        grouped.setdefault(key, []).append(it)
 
-    # prevent overly long Discord posts
-    return "\n\n".join(lines)[:1800]
+    dates = sorted(grouped.keys())
+
+    lines: list[str] = []
+    lines.append(f"**Upcoming {days} days** ({tzs})")
+
+    for d in dates:
+        lines.append("")
+        lines.append(f"**{d}**")
+        for it in grouped[d]:
+            dt = parse_canvas_dt(it.start_at or it.due_at)
+            time_str = ""
+            if dt:
+                local = dt.astimezone(tz).replace(microsecond=0)
+                time_str = local.strftime("%H:%M") + " " + (local.tzname() or "")
+            kind = it.kind
+            # concise, scannable bullet
+            bullet = f"- [{kind}] {it.course}: {it.title}"
+            if time_str:
+                bullet += f" — {time_str}"
+            lines.append(bullet)
+            if it.url:
+                lines.append(f"  {it.url}")
+
+    return "\n".join(lines)
+
+
+def _split_for_discord(text: str, limit: int = 1800) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    parts: list[str] = []
+    buf: list[str] = []
+    n = 0
+    for line in text.splitlines():
+        add = len(line) + 1
+        if n + add > limit and buf:
+            parts.append("\n".join(buf))
+            buf = []
+            n = 0
+        buf.append(line)
+        n += add
+    if buf:
+        parts.append("\n".join(buf))
+    return parts
 
 
 def cmd_digest(
@@ -167,7 +206,9 @@ def cmd_digest(
     if send_discord:
         if not discord_webhook_url:
             raise SystemExit("DISCORD_WEBHOOK_URL is not set")
-        discord_send(webhook_url=discord_webhook_url, content=msg)
-        console.print("Sent digest to Discord.")
+        chunks = _split_for_discord(msg)
+        for c in chunks:
+            discord_send(webhook_url=discord_webhook_url, content=c)
+        console.print(f"Sent digest to Discord. (messages={len(chunks)})")
 
     return 0

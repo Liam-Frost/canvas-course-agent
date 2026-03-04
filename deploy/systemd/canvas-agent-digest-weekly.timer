@@ -1,8 +1,9 @@
 [Unit]
-Description=Canvas Course Agent - Weekly digest schedule
+Description=Canvas Course Agent - Weekly digest schedule (Sun 00:00 America/Vancouver)
 
 [Timer]
-OnCalendar=Mon *-*-* 09:00:00
+# systemd timer OnCalendar uses system timezone. We set the *server* timezone to America/Vancouver.
+OnCalendar=Sun *-*-* 00:00:00
 Persistent=true
 Unit=canvas-agent-digest.service
 
