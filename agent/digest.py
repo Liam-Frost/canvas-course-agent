@@ -251,17 +251,18 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
             # 3) task name
             # 4) bold time
             # 5) short link text
-            lines.append(f"- {kind_label}")
-            lines.append(f"  Course: **{it.course}**")
-            lines.append(f"  Task: {it.title}")
+            # Quote block per task for visual separation in Discord.
+            # A blank line ends the quote, so we can render each task as its own block.
+            lines.append(f"> {kind_label}")
+            lines.append(f"> Course: **{it.course}**")
+            lines.append(f"> Task: {it.title}")
             if time_line:
-                lines.append(f"  Time: {time_line}")
+                lines.append(f"> Time: {time_line}")
             if it.url:
-                lines.append(f"  Link: [Open]({it.url})")
+                lines.append(f"> Link: [Open]({it.url})")
 
-            # Visual separation between tasks on the same day (Discord markdown is… cramped).
             if idx != len(day_items) - 1:
-                lines.append("  ─────────────")
+                lines.append("")
     return "\n".join(lines)
 
 
