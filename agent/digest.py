@@ -223,10 +223,19 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
                 ref = due_dt or start_dt
                 time_line = f"**{_t(ref)} {tzabbr}**" if ref else ""
 
-            lines.append(f"- {time_line}  |  **{it.course}**")
-            lines.append(f"  {kind_label} — {it.title}")
+            # Requested layout:
+            # 1) type
+            # 2) course
+            # 3) task name
+            # 4) bold time
+            # 5) short link text
+            lines.append(f"- {kind_label}")
+            lines.append(f"  Course: **{it.course}**")
+            lines.append(f"  Task: {it.title}")
+            if time_line:
+                lines.append(f"  Time: {time_line}")
             if it.url:
-                lines.append(f"  {it.url}")
+                lines.append(f"  Link: [Open]({it.url})")
 
     return "\n".join(lines)
 
