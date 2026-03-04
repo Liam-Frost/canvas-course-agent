@@ -193,8 +193,14 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     def heading(date_iso: str) -> str:
         if date_iso == "(unknown date)":
             return date_iso
-        dt = datetime.fromisoformat(date_iso + "T00:00:00+00:00").astimezone(tz)
+
+        # date_iso is already a *local date key* (we grouped by dt.astimezone(tz).date()).
+        # So compute DOW in the same timezone; do NOT treat it as UTC midnight,
+        # otherwise timezones west of UTC will shift to the previous day.
+        y, m, d = (int(x) for x in date_iso.split("-"))
+        dt = datetime(y, m, d, 0, 0, 0, tzinfo=tz)
         dow = dt.strftime("%a")  # Mon/Tue
+
         if days >= 28:
             # week-of-month (1-5)
             wom = (dt.day - 1) // 7 + 1
