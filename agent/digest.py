@@ -19,13 +19,31 @@ class DigestItem:
     course: str
     title: str
     start_at: str
+    end_at: str
     due_at: str
     url: str
 
 
+def _short_course_label(name: str, code: str | None) -> str:
+    """Try to derive a compact label like 'CPEN 212' from Canvas course_code/name."""
+    text = f"{code or ''} {name}".strip()
+    # Common UBC patterns: CPEN_V 212 ..., CPSC_V 221 ..., MATH_V 256 ...
+    import re
+
+    m = re.search(r"\b([A-Z]{3,5})[_\s-]*[A-Z]?\s*(\d{3})\b", text)
+    if m:
+        return f"{m.group(1)} {m.group(2)}"
+
+    # fallback: course_code if it exists, else name
+    return (code or name).strip()
+
+
 def _course_name_map(conn) -> dict[int, str]:
     rows = list_courses(conn)
-    return {int(r["id"]): str(r["name"] or r["course_code"] or r["id"]) for r in rows}
+    out: dict[int, str] = {}
+    for r in rows:
+        out[int(r["id"])] = _short_course_label(str(r["name"] or ""), r["course_code"])
+    return out
 
 
 def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -> list[DigestItem]:
@@ -62,12 +80,28 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
             continue
 
         cid = int(r["course_id"])
+        # Quiz window: start=unlock_at (or due_at fallback). end prefers lock_at, else start+time_limit, else due.
+        start_s = str(raw.get("unlock_at") or raw.get("due_at") or "")
+        lock_s = str(raw.get("lock_at") or "")
+        end_s = lock_s
+        if not end_s:
+            start_dt = parse_canvas_dt(start_s)
+            tl = raw.get("time_limit")
+            if start_dt and tl is not None:
+                try:
+                    end_s = (start_dt + timedelta(minutes=int(tl))).isoformat()
+                except Exception:
+                    end_s = ""
+        if not end_s:
+            end_s = str(raw.get("due_at") or "")
+
         items.append(
             DigestItem(
                 kind="quiz",
                 course=course_name_by_id.get(cid, str(cid)),
                 title=str(raw.get("title") or ""),
-                start_at=str(raw.get("unlock_at") or ""),
+                start_at=start_s,
+                end_at=end_s,
                 due_at=str(raw.get("due_at") or ""),
                 url=str(raw.get("html_url") or ""),
             )
@@ -95,6 +129,7 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
                 course=course_name_by_id.get(cid, str(cid)),
                 title=str(r["name"] or ""),
                 start_at=str(r["unlock_at"] or ""),
+                end_at="",
                 due_at=str(r["due_at"] or ""),
                 url=str(r["html_url"] or ""),
             )
@@ -115,6 +150,7 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
                 course="(custom)",
                 title=str(r["title"]),
                 start_at=at_utc.replace(microsecond=0).isoformat(),
+                end_at="",
                 due_at=at_utc.replace(microsecond=0).isoformat(),
                 url="",
             )
@@ -136,8 +172,11 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
 
     # Group by local date for readability
     grouped: dict[str, list[DigestItem]] = {}
+    def _ref_dt(it: DigestItem):
+        return parse_canvas_dt(it.start_at) or parse_canvas_dt(it.due_at)
+
     for it in items:
-        dt = parse_canvas_dt(it.start_at or it.due_at)
+        dt = _ref_dt(it)
         if not dt:
             key = "(unknown date)"
         else:
@@ -149,21 +188,43 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     lines: list[str] = []
     lines.append(f"**Upcoming {days} days** ({tzs})")
 
+    icon = {"quiz": "🧪 Quiz", "assignment": "📝 Asg", "custom": "⏰ Custom"}
+
     for d in dates:
         lines.append("")
         lines.append(f"**{d}**")
         for it in grouped[d]:
-            dt = parse_canvas_dt(it.start_at or it.due_at)
-            time_str = ""
-            if dt:
-                local = dt.astimezone(tz).replace(microsecond=0)
-                time_str = local.strftime("%H:%M") + " " + (local.tzname() or "")
-            kind = it.kind
-            # concise, scannable bullet
-            bullet = f"- [{kind}] {it.course}: {it.title}"
-            if time_str:
-                bullet += f" — {time_str}"
-            lines.append(bullet)
+            kind_label = icon.get(it.kind, f"[{it.kind}]")
+
+            # Multi-line, field-first layout:
+            # - Time: 14:00–14:11 PDT
+            # - Course: CPEN 212
+            # - Task: Quiz — Concurrency I
+            start_dt = parse_canvas_dt(it.start_at) or parse_canvas_dt(it.due_at)
+            end_dt = parse_canvas_dt(it.end_at)
+            due_dt = parse_canvas_dt(it.due_at)
+
+            def _t(dt):
+                if not dt:
+                    return ""
+                loc = dt.astimezone(tz).replace(microsecond=0)
+                return loc.strftime("%H:%M")
+
+            tzabbr = (start_dt.astimezone(tz).tzname() if start_dt else datetime.now(UTC).astimezone(tz).tzname()) or tzs
+
+            # Quiz: show start–end (preferred); fallback to due.
+            if it.kind == "quiz" and start_dt:
+                if end_dt:
+                    time_line = f"**{_t(start_dt)}–{_t(end_dt)} {tzabbr}**"
+                else:
+                    time_line = f"**{_t(start_dt)} {tzabbr}**"
+            else:
+                # assignment/custom: show due time
+                ref = due_dt or start_dt
+                time_line = f"**{_t(ref)} {tzabbr}**" if ref else ""
+
+            lines.append(f"- {time_line}  |  **{it.course}**")
+            lines.append(f"  {kind_label} — {it.title}")
             if it.url:
                 lines.append(f"  {it.url}")
 
