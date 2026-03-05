@@ -21,7 +21,7 @@ from .remind import remind_run
 from .remind_custom import cmd_remind_add, cmd_remind_disable, cmd_remind_list
 from .telegram_cmd import telegram_link
 from .upcoming import upcoming
-from .profile import sync_profiles, export_profiles_md, curate_profiles_ai
+from .profile import sync_profiles, export_profiles_md, curate_profiles_ai, generate_global_state_ai
 from .ai_adapter import AIAdapter, AIAdapterError
 
 console = Console()
@@ -42,6 +42,7 @@ def load_settings(env_path: str) -> Settings:
         ai_model=os.getenv("AI_MODEL") or None,
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        syllabus_link_keywords=os.getenv("SYLLABUS_LINK_KEYWORDS", "syll,outline,course info,grading,schedule"),
     )
 
 
@@ -206,6 +207,12 @@ def main() -> None:
     p_profile_curate.add_argument("--out-dir", default="./export/profiles_ai")
     p_profile_curate.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
     p_profile_curate.add_argument("--model", default=None)
+
+    p_profile_state = sub_profile.add_parser("state")
+    p_profile_state.add_argument("--all", action="store_true")
+    p_profile_state.add_argument("--out", default="./export/profiles_ai/global_state.md")
+    p_profile_state.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
+    p_profile_state.add_argument("--model", default=None)
 
     sp_sync = sub.add_parser("sync")
     sub_sync = sp_sync.add_subparsers(dest="sync_cmd", required=True)
@@ -412,6 +419,21 @@ def main() -> None:
                     client,
                     db_path=s.db_path,
                     out_dir=args.out_dir,
+                    all_courses=args.all,
+                    ai_provider=args.provider or s.ai_provider,
+                    ai_model=args.model or s.ai_model,
+                    openai_api_key=s.openai_api_key,
+                    openai_base_url=s.openai_base_url,
+                    syllabus_link_keywords=s.syllabus_link_keywords,
+                )
+            )
+        if args.profile_cmd == "state":
+            client = canvas_client(s)
+            raise SystemExit(
+                generate_global_state_ai(
+                    client,
+                    db_path=s.db_path,
+                    out_path=args.out,
                     all_courses=args.all,
                     ai_provider=args.provider or s.ai_provider,
                     ai_model=args.model or s.ai_model,

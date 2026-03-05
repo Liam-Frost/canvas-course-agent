@@ -16,3 +16,6 @@ class Settings(BaseModel):
     ai_model: str | None = Field(default=None)
     openai_api_key: str | None = Field(default=None)
     openai_base_url: str = Field(default="https://api.openai.com/v1")
+
+    # Syllabus detection strategy
+    syllabus_link_keywords: str = Field(default="syll,outline,course info,grading,schedule")

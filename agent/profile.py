@@ -522,6 +522,7 @@ def curate_profiles_ai(
     ai_model: str | None = None,
     openai_api_key: str | None = None,
     openai_base_url: str = "https://api.openai.com/v1",
+    syllabus_link_keywords: str = "syll,outline,course info,grading,schedule",
 ) -> int:
     conn = connect(db_path)
     course_ids = _selected_course_ids(conn, all_courses=all_courses)
@@ -566,6 +567,28 @@ def curate_profiles_ai(
             (cid,),
         ).fetchall()
 
+        grading_rows = conn.execute(
+            "SELECT name, raw_json FROM assignments WHERE course_id=?",
+            (cid,),
+        ).fetchall()
+        group_points: dict[str, float] = {}
+        for gr in grading_rows:
+            try:
+                raw = json.loads(gr["raw_json"] or "{}")
+            except Exception:
+                raw = {}
+            group_label = str(raw.get("assignment_group_id") or "ungrouped")
+            pts = raw.get("points_possible")
+            try:
+                pts_f = float(pts) if pts is not None else 0.0
+            except Exception:
+                pts_f = 0.0
+            group_points[group_label] = group_points.get(group_label, 0.0) + pts_f
+
+        grading_lines = [f"- group {k}: total_points={v:g}" for k, v in sorted(group_points.items())]
+
+        kw = [k.strip().lower() for k in syllabus_link_keywords.split(",") if k.strip()]
+
         syllabus_hint_pages = [
             f"- {p['title']} ({p['html_url'] or ''})"
             for p in pages
@@ -574,7 +597,7 @@ def curate_profiles_ai(
         syllabus_hint_files = [
             f"- {f['display_name']} ({f['url'] or ''})"
             for f in files
-            if any(k in (f["display_name"] or "").lower() for k in ["syll", "outline", "course info"])
+            if any(k in (f["display_name"] or "").lower() for k in kw)
         ]
 
         front_page_title = ""
@@ -586,11 +609,26 @@ def curate_profiles_ai(
             front_page_body = str(fp.get("body") or "")
             for href in re.findall(r'href="([^"]+)"', front_page_body):
                 h = href.replace("&amp;", "&")
-                if any(k in h.lower() for k in ["syll", "outline", "file", "files/"]):
+                if any(k in h.lower() for k in (kw + ["files/"])):
                     front_page_syllabus_links.append(h)
             front_page_syllabus_links = list(dict.fromkeys(front_page_syllabus_links))[:12]
         except Exception:
             pass
+
+        try:
+            c_raw = json.loads(c["raw_json"] or "{}")
+        except Exception:
+            c_raw = {}
+
+        now = datetime.now(UTC)
+        start_dt = parse_canvas_dt(c_raw.get("start_at"))
+        end_dt = parse_canvas_dt(c_raw.get("end_at"))
+        week_info = "unknown"
+        if start_dt and now >= start_dt:
+            week_no = max(1, int((now - start_dt).days // 7) + 1)
+            week_info = f"week {week_no}"
+        if end_dt and now > end_dt:
+            week_info += " (course likely ended)"
 
         prompt = "\n".join(
             [
@@ -605,6 +643,13 @@ def curate_profiles_ai(
                 "- Goals: ...",
                 "- Policies: ...",
                 "- Grading: ...",
+                "## Grading Composition (estimated from Canvas data)",
+                "- ...",
+                "## Current Teaching Week Context",
+                "- Week position: ...",
+                "- Already covered: ...",
+                "- Remaining likely topics: ...",
+                "- Exams passed / upcoming and likely coverage: ...",
                 "## Key Logistics",
                 "- Instructors/TAs: ...",
                 "- Important links: ...",
@@ -614,6 +659,13 @@ def curate_profiles_ai(
                 "- ...",
                 "",
                 f"Course: {c['name']} ({c['course_code']}) term={c['term_name']}",
+                f"Now (UTC): {now.isoformat()}",
+                f"Course start_at: {c_raw.get('start_at') or ''}",
+                f"Course end_at: {c_raw.get('end_at') or ''}",
+                f"Current week estimate: {week_info}",
+                "",
+                "Estimated grading composition candidates (from assignment points):",
+                *(grading_lines or ["- (no assignment points data)"]),
                 "",
                 "Syllabus HTML (may be empty):",
                 (c["syllabus_body"] or "(empty)")[:6000],
@@ -656,4 +708,94 @@ def curate_profiles_ai(
         written += 1
 
     console.print(f"Wrote AI-curated dossiers: {written} -> {out}")
+    return 0
+
+
+def generate_global_state_ai(
+    client: CanvasClient,
+    *,
+    db_path: str,
+    out_path: str = "./export/profiles_ai/global_state.md",
+    all_courses: bool = False,
+    ai_provider: str = "auto",
+    ai_model: str | None = None,
+    openai_api_key: str | None = None,
+    openai_base_url: str = "https://api.openai.com/v1",
+) -> int:
+    conn = connect(db_path)
+    course_ids = _selected_course_ids(conn, all_courses=all_courses)
+    if not course_ids:
+        console.print("No courses selected. Star courses first or use --all.")
+        return 1
+
+    adapter = AIAdapter(
+        provider=ai_provider,
+        model=ai_model,
+        openai_api_key=openai_api_key,
+        openai_base_url=openai_base_url,
+    )
+
+    now = datetime.now(UTC)
+    courses_payload: list[str] = []
+    for cid in course_ids:
+        c = conn.execute(
+            "SELECT id, name, course_code, term_name, start_at, end_at FROM courses WHERE id=?",
+            (cid,),
+        ).fetchone()
+        if not c:
+            continue
+
+        upcoming_q = conn.execute(
+            "SELECT title, unlock_at, due_at FROM quizzes WHERE course_id=? ORDER BY COALESCE(unlock_at, due_at) LIMIT 8",
+            (cid,),
+        ).fetchall()
+        upcoming_a = conn.execute(
+            "SELECT name, due_at FROM assignments WHERE course_id=? ORDER BY due_at LIMIT 10",
+            (cid,),
+        ).fetchall()
+
+        quizzes_lines = [f"  - quiz: {q['title']} | unlock={q['unlock_at']} due={q['due_at']}" for q in upcoming_q]
+        asg_lines = [f"  - assignment: {a['name']} | due={a['due_at']}" for a in upcoming_a]
+
+        courses_payload.extend(
+            [
+                f"- course_id={c['id']} code={c['course_code']} term={c['term_name']} start={c['start_at']} end={c['end_at']}",
+                *(quizzes_lines or ["  - quiz: (none)"]),
+                *(asg_lines or ["  - assignment: (none)"]),
+            ]
+        )
+
+    prompt = "\n".join(
+        [
+            "You are an academic state planner for a Canvas AI agent.",
+            "Return markdown with these sections exactly:",
+            "# Global Academic State",
+            "## Current Term",
+            "## Week Position",
+            "## Cross-course Progress Snapshot",
+            "## Passed vs Upcoming Exams",
+            "## Next 7-Day Focus",
+            "## Config Suggestions",
+            "",
+            "Rules:",
+            "- Infer current active term and current teaching week from course dates/term labels.",
+            "- Estimate what content is likely already covered vs upcoming.",
+            "- Distinguish exams likely passed vs upcoming from quiz timing labels/data.",
+            "- Config suggestions should be concrete for this agent (sync cadence, risk thresholds, syllabus keyword tuning).",
+            "",
+            f"Now (UTC): {now.isoformat()}",
+            "Courses and signals:",
+            *courses_payload,
+        ]
+    )
+
+    try:
+        out = adapter.complete(prompt)
+    except AIAdapterError as e:
+        out = f"# Global Academic State\n\nAI state generation failed: {e}\n"
+
+    p = Path(out_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(out.strip() + "\n")
+    console.print(f"Wrote global state: {p}")
     return 0

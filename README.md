@@ -19,6 +19,7 @@ This project is designed to work with **any** Canvas instance (e.g. `https://can
   - `auto` routing
   - `codex-oauth` backend
   - `openai-api` backend
+- AI global-state snapshot (`canvas-agent profile state`) to infer active term, current teaching week, and exam timeline
 - Send reminders/digest to Discord (webhook) and Telegram
 
 ## Configuration
@@ -35,6 +36,7 @@ Set env vars (recommended via `.env`):
 - `AI_MODEL` (optional model override)
 - `OPENAI_API_KEY` (required when `AI_PROVIDER=openai-api`)
 - `OPENAI_BASE_URL` (optional, default `https://api.openai.com/v1`)
+- `SYLLABUS_LINK_KEYWORDS` (comma-separated keywords for syllabus link detection on front page/pages/files)
 
 Example (`.env`):
 ```bash
@@ -183,8 +185,15 @@ canvas-agent ai probe --provider openai-api --model gpt-4.1-mini --prompt "Reply
 # Ensure profile data has been synced first
 canvas-agent profile sync --all
 
-# Let AI pick likely syllabus source (page/pdf/syllabus_body) and curate dossiers
+# Let AI pick likely syllabus source (front_page/page/pdf/syllabus_body),
+# estimate grading composition, and curate dossiers
 canvas-agent profile curate --all --provider auto --out-dir ./export/profiles_ai
+```
+
+9) Global academic state (AI):
+```bash
+# Generate cross-course term/week/exam-progress state snapshot
+canvas-agent profile state --all --provider auto --out ./export/profiles_ai/global_state.md
 ```
 
 Global toggles:
