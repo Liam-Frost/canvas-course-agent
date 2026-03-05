@@ -91,8 +91,39 @@ class CanvasClient:
 
         return list(self._paginate("/api/v1/calendar_events", params=params))
 
-    def list_assignments(self, course_id: int) -> list[dict[str, Any]]:
+    def get_course(self, course_id: int, *, include: list[str] | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if include:
+            params["include[]"] = include
+        with self._client() as c:
+            r = c.get(f"/api/v1/courses/{course_id}", params=params)
+            r.raise_for_status()
+            return r.json()
+
+    def list_course_users(
+        self,
+        course_id: int,
+        *,
+        enrollment_types: list[str] | None = None,
+        include: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"per_page": 100}
+        if enrollment_types:
+            params["enrollment_type[]"] = enrollment_types
+        if include:
+            params["include[]"] = include
+        return list(self._paginate(f"/api/v1/courses/{course_id}/users", params=params))
+
+    def list_modules(self, course_id: int, *, include_items: bool = True) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        if include_items:
+            params["include[]"] = ["items"]
+        return list(self._paginate(f"/api/v1/courses/{course_id}/modules", params=params))
+
+    def list_assignments(self, course_id: int, *, include: list[str] | None = None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        if include:
+            params["include[]"] = include
         return list(self._paginate(f"/api/v1/courses/{course_id}/assignments", params=params))
 
     def list_quizzes(self, course_id: int) -> list[dict[str, Any]]:

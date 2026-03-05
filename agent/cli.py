@@ -19,6 +19,7 @@ from .remind import remind_run
 from .remind_custom import cmd_remind_add, cmd_remind_disable, cmd_remind_list
 from .telegram_cmd import telegram_link
 from .upcoming import upcoming
+from .profile import sync_profiles, export_profiles_md
 
 console = Console()
 
@@ -143,6 +144,17 @@ def main() -> None:
     p_up.add_argument("--days", type=int, default=14)
     p_up.add_argument("--all", action="store_true")
 
+    sp_profile = sub.add_parser("profile")
+    sub_profile = sp_profile.add_subparsers(dest="profile_cmd", required=True)
+
+    p_profile_sync = sub_profile.add_parser("sync")
+    p_profile_sync.add_argument("--all", action="store_true", help="ignore starred filter and sync all")
+
+    p_profile_export = sub_profile.add_parser("export")
+    p_profile_export.add_argument("--days", type=int, default=30)
+    p_profile_export.add_argument("--all", action="store_true")
+    p_profile_export.add_argument("--out-dir", default="./export/profiles")
+
     sp_sync = sub.add_parser("sync")
     sub_sync = sp_sync.add_subparsers(dest="sync_cmd", required=True)
 
@@ -265,6 +277,21 @@ def main() -> None:
     if args.cmd == "upcoming":
         s = load_settings(env_path)
         raise SystemExit(upcoming(db_path=s.db_path, days=args.days, all_courses=args.all, timezone=s.timezone))
+
+    if args.cmd == "profile":
+        s = load_settings(env_path)
+        if args.profile_cmd == "sync":
+            client = canvas_client(s)
+            raise SystemExit(sync_profiles(client, db_path=s.db_path, all_courses=args.all))
+        if args.profile_cmd == "export":
+            raise SystemExit(
+                export_profiles_md(
+                    db_path=s.db_path,
+                    out_dir=args.out_dir,
+                    days=args.days,
+                    all_courses=args.all,
+                )
+            )
 
     if args.cmd == "sync":
         s = load_settings(env_path)

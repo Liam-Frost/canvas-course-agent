@@ -62,6 +62,70 @@ CREATE TABLE IF NOT EXISTS quizzes (
   updated_at_local TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS course_people (
+  course_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  name TEXT,
+  sortable_name TEXT,
+  short_name TEXT,
+  login_id TEXT,
+  sis_user_id TEXT,
+  email TEXT,
+  role TEXT,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, user_id, role)
+);
+
+CREATE TABLE IF NOT EXISTS course_modules (
+  course_id INTEGER NOT NULL,
+  module_id INTEGER NOT NULL,
+  name TEXT,
+  position INTEGER,
+  unlock_at TEXT,
+  state TEXT,
+  items_count INTEGER,
+  published INTEGER,
+  require_sequential_progress INTEGER,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, module_id)
+);
+
+CREATE TABLE IF NOT EXISTS course_module_items (
+  course_id INTEGER NOT NULL,
+  module_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  title TEXT,
+  type TEXT,
+  content_id INTEGER,
+  html_url TEXT,
+  position INTEGER,
+  published INTEGER,
+  completion_requirement TEXT,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, module_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS assignment_submissions (
+  course_id INTEGER NOT NULL,
+  assignment_id INTEGER NOT NULL,
+  user_id INTEGER,
+  workflow_state TEXT,
+  submitted_at TEXT,
+  graded_at TEXT,
+  score REAL,
+  grade TEXT,
+  attempt INTEGER,
+  late INTEGER,
+  missing INTEGER,
+  excused INTEGER,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, assignment_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -255,5 +319,127 @@ def upsert_quiz(conn: sqlite3.Connection, course_id: int, q: dict[str, Any]) -> 
             q.get("lock_at"),
             q.get("html_url"),
             json.dumps(q, ensure_ascii=False),
+        ),
+    )
+
+
+def replace_course_people(conn: sqlite3.Connection, course_id: int, people: list[dict[str, Any]]) -> None:
+    conn.execute("DELETE FROM course_people WHERE course_id=?", (course_id,))
+    for p in people:
+        role = ""
+        enr = p.get("enrollments") or []
+        if isinstance(enr, list) and enr:
+            role = str((enr[0] or {}).get("type") or "")
+
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO course_people (
+              course_id, user_id, name, sortable_name, short_name, login_id, sis_user_id, email, role, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                course_id,
+                p.get("id"),
+                p.get("name"),
+                p.get("sortable_name"),
+                p.get("short_name"),
+                p.get("login_id"),
+                p.get("sis_user_id"),
+                p.get("email"),
+                role,
+                json.dumps(p, ensure_ascii=False),
+            ),
+        )
+
+
+def replace_course_modules(conn: sqlite3.Connection, course_id: int, modules: list[dict[str, Any]]) -> None:
+    conn.execute("DELETE FROM course_module_items WHERE course_id=?", (course_id,))
+    conn.execute("DELETE FROM course_modules WHERE course_id=?", (course_id,))
+
+    for m in modules:
+        module_id = m.get("id")
+        conn.execute(
+            """
+            INSERT INTO course_modules (
+              course_id, module_id, name, position, unlock_at, state, items_count, published,
+              require_sequential_progress, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                course_id,
+                module_id,
+                m.get("name"),
+                m.get("position"),
+                m.get("unlock_at"),
+                m.get("state"),
+                m.get("items_count"),
+                1 if m.get("published") else 0,
+                1 if m.get("require_sequential_progress") else 0,
+                json.dumps(m, ensure_ascii=False),
+            ),
+        )
+
+        items = m.get("items") or []
+        for it in items:
+            conn.execute(
+                """
+                INSERT INTO course_module_items (
+                  course_id, module_id, item_id, title, type, content_id, html_url, position,
+                  published, completion_requirement, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    course_id,
+                    module_id,
+                    it.get("id"),
+                    it.get("title"),
+                    it.get("type"),
+                    it.get("content_id"),
+                    it.get("html_url"),
+                    it.get("position"),
+                    1 if it.get("published") else 0,
+                    json.dumps(it.get("completion_requirement"), ensure_ascii=False)
+                    if it.get("completion_requirement") is not None
+                    else None,
+                    json.dumps(it, ensure_ascii=False),
+                ),
+            )
+
+
+def upsert_assignment_submission(conn: sqlite3.Connection, course_id: int, assignment_id: int, s: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO assignment_submissions (
+          course_id, assignment_id, user_id, workflow_state, submitted_at, graded_at,
+          score, grade, attempt, late, missing, excused, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(course_id, assignment_id) DO UPDATE SET
+          user_id=excluded.user_id,
+          workflow_state=excluded.workflow_state,
+          submitted_at=excluded.submitted_at,
+          graded_at=excluded.graded_at,
+          score=excluded.score,
+          grade=excluded.grade,
+          attempt=excluded.attempt,
+          late=excluded.late,
+          missing=excluded.missing,
+          excused=excluded.excused,
+          raw_json=excluded.raw_json,
+          updated_at_local=datetime('now');
+        """,
+        (
+            course_id,
+            assignment_id,
+            s.get("user_id"),
+            s.get("workflow_state"),
+            s.get("submitted_at"),
+            s.get("graded_at"),
+            s.get("score"),
+            s.get("grade"),
+            s.get("attempt"),
+            1 if s.get("late") else 0,
+            1 if s.get("missing") else 0,
+            1 if s.get("excused") else 0,
+            json.dumps(s, ensure_ascii=False),
         ),
     )
