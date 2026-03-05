@@ -13,7 +13,10 @@ from .storage.sqlite import (
     list_courses,
     list_starred_course_ids,
     replace_course_announcements,
+    replace_course_discussions,
+    replace_course_files,
     replace_course_modules,
+    replace_course_pages,
     replace_course_people,
     upsert_assignment,
     upsert_assignment_submission,
@@ -51,6 +54,9 @@ def sync_profiles(
     items_total = 0
     submissions_total = 0
     announcements_total = 0
+    pages_total = 0
+    files_total = 0
+    discussions_total = 0
 
     with conn:
         for cid in course_ids:
@@ -129,6 +135,39 @@ def sync_profiles(
             except Exception as e:
                 console.print(f"[yellow]Course {cid}: announcements fetch failed: {type(e).__name__}: {e}[/yellow]")
 
+            # 7) pages
+            try:
+                pages = client.list_pages(cid)
+                replace_course_pages(conn, cid, pages)
+                pages_total += len(pages)
+                ok = True
+            except Exception as e:
+                msg = str(e)
+                if "404" not in msg and "Not Found" not in msg:
+                    console.print(f"[yellow]Course {cid}: pages fetch failed: {type(e).__name__}: {e}[/yellow]")
+
+            # 8) files
+            try:
+                files = client.list_files(cid)
+                replace_course_files(conn, cid, files)
+                files_total += len(files)
+                ok = True
+            except Exception as e:
+                msg = str(e)
+                if "404" not in msg and "Not Found" not in msg:
+                    console.print(f"[yellow]Course {cid}: files fetch failed: {type(e).__name__}: {e}[/yellow]")
+
+            # 9) discussion topics
+            try:
+                discussions = client.list_discussion_topics(cid)
+                replace_course_discussions(conn, cid, discussions)
+                discussions_total += len(discussions)
+                ok = True
+            except Exception as e:
+                msg = str(e)
+                if "404" not in msg and "Not Found" not in msg:
+                    console.print(f"[yellow]Course {cid}: discussions fetch failed: {type(e).__name__}: {e}[/yellow]")
+
             if ok:
                 synced += 1
 
@@ -140,6 +179,9 @@ def sync_profiles(
     t.add_row("module items", str(items_total))
     t.add_row("assignment submissions", str(submissions_total))
     t.add_row("announcements", str(announcements_total))
+    t.add_row("pages", str(pages_total))
+    t.add_row("files", str(files_total))
+    t.add_row("discussions", str(discussions_total))
     console.print(t)
 
     return 0
@@ -235,6 +277,30 @@ def export_profiles_md(
             """
             SELECT title, posted_at, html_url FROM course_announcements
             WHERE course_id=? ORDER BY COALESCE(posted_at, delayed_post_at) DESC LIMIT 8
+            """,
+            (cid,),
+        ).fetchall()
+
+        pages = conn.execute(
+            """
+            SELECT title, html_url, updated_at FROM course_pages
+            WHERE course_id=? ORDER BY updated_at DESC, title ASC LIMIT 12
+            """,
+            (cid,),
+        ).fetchall()
+
+        files = conn.execute(
+            """
+            SELECT display_name, content_type, size, modified_at, url FROM course_files
+            WHERE course_id=? ORDER BY modified_at DESC, display_name ASC LIMIT 15
+            """,
+            (cid,),
+        ).fetchall()
+
+        discussions = conn.execute(
+            """
+            SELECT title, posted_at, last_reply_at, html_url FROM course_discussions
+            WHERE course_id=? ORDER BY COALESCE(last_reply_at, posted_at) DESC LIMIT 10
             """,
             (cid,),
         ).fetchall()
@@ -348,6 +414,37 @@ def export_profiles_md(
             for a in anns:
                 url = f" {a['html_url']}" if a["html_url"] else ""
                 lines.append(f"- `{a['posted_at'] or ''}` {a['title'] or '(untitled)'}{url}")
+        else:
+            lines.append("- (none synced)")
+
+        lines.append("")
+        lines.append("## Pages index")
+        if pages:
+            for p in pages:
+                url = f" {p['html_url']}" if p["html_url"] else ""
+                lines.append(f"- `{p['updated_at'] or ''}` {p['title'] or '(untitled)'}{url}")
+        else:
+            lines.append("- (none synced)")
+
+        lines.append("")
+        lines.append("## Files index")
+        if files:
+            for f in files:
+                url = f" {f['url']}" if f["url"] else ""
+                size = f"{f['size']}B" if f["size"] is not None else "?"
+                ctype = f["content_type"] or ""
+                lines.append(f"- `{f['modified_at'] or ''}` {f['display_name'] or '(unnamed)'} ({ctype}, {size}){url}")
+        else:
+            lines.append("- (none synced)")
+
+        lines.append("")
+        lines.append("## Discussion topics")
+        if discussions:
+            for d in discussions:
+                url = f" {d['html_url']}" if d["html_url"] else ""
+                lines.append(
+                    f"- `{d['last_reply_at'] or d['posted_at'] or ''}` {d['title'] or '(untitled)'}{url}"
+                )
         else:
             lines.append("- (none synced)")
 

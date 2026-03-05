@@ -139,6 +139,49 @@ CREATE TABLE IF NOT EXISTS course_announcements (
   PRIMARY KEY (course_id, announcement_id)
 );
 
+CREATE TABLE IF NOT EXISTS course_pages (
+  course_id INTEGER NOT NULL,
+  page_id INTEGER NOT NULL,
+  url TEXT,
+  title TEXT,
+  html_url TEXT,
+  published INTEGER,
+  editing_roles TEXT,
+  updated_at TEXT,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, page_id)
+);
+
+CREATE TABLE IF NOT EXISTS course_files (
+  course_id INTEGER NOT NULL,
+  file_id INTEGER NOT NULL,
+  display_name TEXT,
+  filename TEXT,
+  content_type TEXT,
+  size INTEGER,
+  modified_at TEXT,
+  url TEXT,
+  folder_id INTEGER,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, file_id)
+);
+
+CREATE TABLE IF NOT EXISTS course_discussions (
+  course_id INTEGER NOT NULL,
+  topic_id INTEGER NOT NULL,
+  title TEXT,
+  posted_at TEXT,
+  last_reply_at TEXT,
+  html_url TEXT,
+  discussion_type TEXT,
+  locked INTEGER,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, topic_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -476,5 +519,75 @@ def replace_course_announcements(conn: sqlite3.Connection, course_id: int, items
                 a.get("html_url"),
                 a.get("message"),
                 json.dumps(a, ensure_ascii=False),
+            ),
+        )
+
+
+def replace_course_pages(conn: sqlite3.Connection, course_id: int, items: list[dict[str, Any]]) -> None:
+    conn.execute("DELETE FROM course_pages WHERE course_id=?", (course_id,))
+    for p in items:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO course_pages (
+              course_id, page_id, url, title, html_url, published, editing_roles, updated_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                course_id,
+                p.get("page_id"),
+                p.get("url"),
+                p.get("title"),
+                p.get("html_url"),
+                1 if p.get("published") else 0,
+                p.get("editing_roles"),
+                p.get("updated_at"),
+                json.dumps(p, ensure_ascii=False),
+            ),
+        )
+
+
+def replace_course_files(conn: sqlite3.Connection, course_id: int, items: list[dict[str, Any]]) -> None:
+    conn.execute("DELETE FROM course_files WHERE course_id=?", (course_id,))
+    for f in items:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO course_files (
+              course_id, file_id, display_name, filename, content_type, size, modified_at, url, folder_id, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                course_id,
+                f.get("id"),
+                f.get("display_name"),
+                f.get("filename"),
+                f.get("content-type") or f.get("content_type"),
+                f.get("size"),
+                f.get("modified_at"),
+                f.get("url"),
+                f.get("folder_id"),
+                json.dumps(f, ensure_ascii=False),
+            ),
+        )
+
+
+def replace_course_discussions(conn: sqlite3.Connection, course_id: int, items: list[dict[str, Any]]) -> None:
+    conn.execute("DELETE FROM course_discussions WHERE course_id=?", (course_id,))
+    for d in items:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO course_discussions (
+              course_id, topic_id, title, posted_at, last_reply_at, html_url, discussion_type, locked, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                course_id,
+                d.get("id"),
+                d.get("title"),
+                d.get("posted_at"),
+                d.get("last_reply_at"),
+                d.get("html_url"),
+                d.get("discussion_type"),
+                1 if d.get("locked") else 0,
+                json.dumps(d, ensure_ascii=False),
             ),
         )

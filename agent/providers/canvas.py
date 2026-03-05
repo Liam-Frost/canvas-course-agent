@@ -134,6 +134,18 @@ class CanvasClient:
             params["latest_only"] = True
         return list(self._paginate("/api/v1/announcements", params=params))
 
+    def list_pages(self, course_id: int) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        return list(self._paginate(f"/api/v1/courses/{course_id}/pages", params=params))
+
+    def list_files(self, course_id: int) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        return list(self._paginate(f"/api/v1/courses/{course_id}/files", params=params))
+
+    def list_discussion_topics(self, course_id: int) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100}
+        return list(self._paginate(f"/api/v1/courses/{course_id}/discussion_topics", params=params))
+
     def list_assignments(self, course_id: int, *, include: list[str] | None = None) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"per_page": 100}
         if include:
