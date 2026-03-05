@@ -1,16 +1,25 @@
 # Canvas Course Agent
 
-A personal agent that pulls course info from Canvas (syllabus/assignments/quizzes/calendar) and turns it into a local course archive + reminders (e.g. Discord).
+A personal Canvas agent that builds per-course profiles (deadlines, submissions, announcements, resources) and now supports pluggable AI adapters (Codex OAuth / OpenAI API) for analysis workflows.
 
 This is meant to work with **any** Canvas instance (e.g. `https://canvas.ubc.ca`) via config.
 
-## What it does (v0 scope)
-- Import your course list
-- Import deadlines (assignments/quizzes/calendar items)
-- Let you pick “important courses” (starred) and only sync/remind for those
-- Store locally (SQLite)
-- Export to iCalendar (.ics) and Markdown
-- Send reminders to Discord (webhook for now) (TODO)
+## What it does (current scope)
+- Import course list + deadline signals (assignments/quizzes/calendar)
+- Build per-course profiles in local SQLite:
+  - people (teachers/TAs)
+  - submissions snapshot (missing/late/score state)
+  - announcements
+  - modules/module items
+  - pages/files/discussion indexes (when Canvas permissions/features allow)
+- Compute lightweight risk score per course and generate a global `profiles_index.md`
+- Let you star important courses and filter sync/reminders by star set
+- Export iCalendar (.ics) and Markdown profiles
+- AI adapter entrypoint (`canvas-agent ai ...`) with:
+  - `auto` routing
+  - `codex-oauth` backend
+  - `openai-api` backend
+- Send reminders/digest to Discord (webhook) and Telegram
 
 ## Configuration
 This project is **multi-school** by design.
@@ -175,6 +184,12 @@ canvas-agent config set remind.enabled on
 canvas-agent config set remind.discord.enabled on
 canvas-agent config set remind.telegram.enabled on
 ```
+
+## AI-first roadmap (next)
+- Course-profile summarization and actionable weekly plans
+- Risk-aware nudges (based on due density + missing/late trends)
+- Prompt templates for per-course Q&A ("what should I do today?")
+- Provider failover + retry tuning for AI adapters
 
 ## Scheduling
 You have two options:
