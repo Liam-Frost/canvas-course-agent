@@ -211,6 +211,18 @@ canvas-agent profile bootstrap --all --provider auto \
   --meta-out ./export/profiles_ai/agent_bootstrap_state.json
 ```
 
+11) Manual mapping override (when AI inference is wrong):
+```bash
+# List resolved AI mappings
+canvas-agent ai map list --limit 30
+
+# Force override for a specific task
+canvas-agent ai map set --kind assignment --item-id 2380003 --course-id 178681 --topic "虚拟内存与页表"
+
+# Clear override
+canvas-agent ai map clear --kind assignment --item-id 2380003
+```
+
 Global toggles:
 ```bash
 canvas-agent config set remind.enabled on

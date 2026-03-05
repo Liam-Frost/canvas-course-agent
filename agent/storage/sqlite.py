@@ -713,3 +713,45 @@ def get_ai_mapping_override(conn: sqlite3.Connection, *, kind: str, item_id: int
         "SELECT topic, note FROM ai_task_mapping_override WHERE kind=? AND item_id=?",
         (kind, item_id),
     ).fetchone()
+
+
+def upsert_ai_mapping_override(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    item_id: int,
+    course_id: int | None,
+    topic: str,
+    note: str | None,
+    updated_at_utc: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO ai_task_mapping_override (kind, item_id, course_id, topic, note, updated_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(kind, item_id) DO UPDATE SET
+          course_id=excluded.course_id,
+          topic=excluded.topic,
+          note=excluded.note,
+          updated_at_utc=excluded.updated_at_utc;
+        """,
+        (kind, item_id, course_id, topic, note, updated_at_utc),
+    )
+
+
+def delete_ai_mapping_override(conn: sqlite3.Connection, *, kind: str, item_id: int) -> None:
+    conn.execute("DELETE FROM ai_task_mapping_override WHERE kind=? AND item_id=?", (kind, item_id))
+
+
+def list_ai_mapping_resolved(conn: sqlite3.Connection, *, limit: int = 50) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            """
+            SELECT kind, item_id, course_id, primary_topic, confidence, source, updated_at_utc
+            FROM ai_task_mapping_resolved
+            ORDER BY updated_at_utc DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    )

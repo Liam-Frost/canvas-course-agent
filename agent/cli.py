@@ -25,6 +25,7 @@ from .telegram_cmd import telegram_link
 from .upcoming import upcoming
 from .profile import sync_profiles, export_profiles_md, curate_profiles_ai, generate_global_state_ai
 from .ai_adapter import AIAdapter, AIAdapterError
+from .storage.sqlite import connect, delete_ai_mapping_override, list_ai_mapping_resolved, upsert_ai_mapping_override
 
 console = Console()
 
@@ -198,6 +199,23 @@ def main() -> None:
     p_ai_auth = sub_ai.add_parser("auth", help="project-local auth setup flow")
     p_ai_auth.add_argument("--provider", choices=["codex-oauth", "openai-api"], required=True)
 
+    p_ai_map = sub_ai.add_parser("map", help="manage task-topic mappings")
+    sub_map = p_ai_map.add_subparsers(dest="ai_map_cmd", required=True)
+
+    p_map_list = sub_map.add_parser("list")
+    p_map_list.add_argument("--limit", type=int, default=30)
+
+    p_map_set = sub_map.add_parser("set")
+    p_map_set.add_argument("--kind", choices=["assignment", "quiz"], required=True)
+    p_map_set.add_argument("--item-id", type=int, required=True)
+    p_map_set.add_argument("--course-id", type=int, default=None)
+    p_map_set.add_argument("--topic", required=True)
+    p_map_set.add_argument("--note", default=None)
+
+    p_map_clear = sub_map.add_parser("clear")
+    p_map_clear.add_argument("--kind", choices=["assignment", "quiz"], required=True)
+    p_map_clear.add_argument("--item-id", type=int, required=True)
+
     sp_profile = sub.add_parser("profile")
     sub_profile = sp_profile.add_subparsers(dest="profile_cmd", required=True)
 
@@ -361,7 +379,7 @@ def main() -> None:
 
     if args.cmd == "ai":
         s = load_settings(env_path)
-        provider = args.provider or s.ai_provider
+        provider = getattr(args, "provider", None) or s.ai_provider
         model = getattr(args, "model", None) or s.ai_model
         adapter = AIAdapter(
             provider=provider,
@@ -374,6 +392,41 @@ def main() -> None:
             for line in adapter.doctor():
                 console.print("-", line)
             raise SystemExit(0)
+
+        if args.ai_cmd == "map":
+            conn = connect(s.db_path)
+            if args.ai_map_cmd == "list":
+                rows = list_ai_mapping_resolved(conn, limit=args.limit)
+                if not rows:
+                    console.print("(no mapping rows)")
+                else:
+                    for r in rows:
+                        console.print(
+                            f"- {r['kind']}#{r['item_id']} course={r['course_id']} topic={r['primary_topic']} "
+                            f"conf={r['confidence']} source={r['source']}"
+                        )
+                raise SystemExit(0)
+
+            if args.ai_map_cmd == "set":
+                ts = datetime.now(UTC).replace(microsecond=0).isoformat()
+                with conn:
+                    upsert_ai_mapping_override(
+                        conn,
+                        kind=args.kind,
+                        item_id=args.item_id,
+                        course_id=args.course_id,
+                        topic=args.topic,
+                        note=args.note,
+                        updated_at_utc=ts,
+                    )
+                console.print(f"[green]override set:[/green] {args.kind}#{args.item_id} -> {args.topic}")
+                raise SystemExit(0)
+
+            if args.ai_map_cmd == "clear":
+                with conn:
+                    delete_ai_mapping_override(conn, kind=args.kind, item_id=args.item_id)
+                console.print(f"[green]override cleared:[/green] {args.kind}#{args.item_id}")
+                raise SystemExit(0)
 
         if args.ai_cmd == "auth":
             if args.provider == "openai-api":
