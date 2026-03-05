@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from rich.console import Console
 
+from .ai_adapter import AIAdapter, AIAdapterError
 from .discord_webhook import discord_send
 from .storage.sqlite import connect, list_courses, list_starred_course_ids
 from .timeutil import fmt_canvas_dt_2line, get_tz, parse_canvas_dt, tz_label
@@ -22,6 +23,9 @@ class DigestItem:
     end_at: str
     due_at: str
     url: str
+    course_id: int | None = None
+    item_id: int | None = None
+    ai_note: str | None = None
 
 
 def _short_course_label(name: str, code: str | None) -> str:
@@ -104,6 +108,8 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
                 end_at=end_s,
                 due_at=str(raw.get("due_at") or ""),
                 url=str(raw.get("html_url") or ""),
+                course_id=cid,
+                item_id=int(raw.get("id")) if raw.get("id") is not None else None,
             )
         )
 
@@ -134,6 +140,8 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
                 end_at="",
                 due_at=due_s,
                 url=str(r["html_url"] or ""),
+                course_id=cid,
+                item_id=asg_id,
             )
         )
 
@@ -163,6 +171,48 @@ def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -
 
     items.sort(key=sort_key)
     return items
+
+
+def annotate_digest_items_ai(
+    *,
+    conn,
+    items: list[DigestItem],
+    adapter: AIAdapter,
+) -> None:
+    for it in items:
+        if it.kind not in ("assignment", "quiz"):
+            continue
+
+        ann_titles: list[str] = []
+        if it.course_id is not None:
+            rows = conn.execute(
+                "SELECT title FROM course_announcements WHERE course_id=? ORDER BY COALESCE(posted_at, delayed_post_at) DESC LIMIT 2",
+                (it.course_id,),
+            ).fetchall()
+            ann_titles = [str(r["title"] or "") for r in rows if (r["title"] or "").strip()]
+
+        prompt = "\n".join(
+            [
+                "Write ONE short Chinese description (<=30 chars) for this Canvas task.",
+                "Must be concrete and action-oriented. No markdown, no prefix, one line only.",
+                f"Course: {it.course}",
+                f"Type: {it.kind}",
+                f"Task: {it.title}",
+                f"Due/Start: {it.due_at or it.start_at}",
+                "Recent announcements:",
+                *([f"- {t}" for t in ann_titles] or ["- (none)"]),
+            ]
+        )
+
+        try:
+            text = adapter.complete(prompt).strip()
+            # keep only first line and clamp
+            text = text.splitlines()[0].strip()
+            if len(text) > 60:
+                text = text[:60].rstrip() + "…"
+            it.ai_note = text
+        except AIAdapterError:
+            it.ai_note = None
 
 
 def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
@@ -262,6 +312,8 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
             lines.append(f"> {kind_label}")
             lines.append(f"> Course: **{it.course}**")
             lines.append(f"> Task: {it.title}")
+            if it.ai_note:
+                lines.append(f"> Note: {it.ai_note}")
             if time_line:
                 lines.append(f"> Time: {time_line}")
             if it.url:
@@ -299,8 +351,24 @@ def cmd_digest(
     timezone: str,
     discord_webhook_url: str | None,
     send_discord: bool,
+    ai_describe: bool = False,
+    ai_provider: str = "auto",
+    ai_model: str | None = None,
+    openai_api_key: str | None = None,
+    openai_base_url: str = "https://api.openai.com/v1",
 ) -> int:
+    conn = connect(db_path)
     items = build_digest(db_path=db_path, days=days, all_courses=all_courses, timezone=timezone)
+
+    if ai_describe and items:
+        adapter = AIAdapter(
+            provider=ai_provider,
+            model=ai_model,
+            openai_api_key=openai_api_key,
+            openai_base_url=openai_base_url,
+        )
+        annotate_digest_items_ai(conn=conn, items=items, adapter=adapter)
+
     msg = format_digest(items=items, days=days, timezone=timezone)
 
     console.print(msg)

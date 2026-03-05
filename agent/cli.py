@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 
@@ -158,6 +160,9 @@ def main() -> None:
     p_digest.add_argument("--days", type=int, default=7)
     p_digest.add_argument("--all", action="store_true")
     p_digest.add_argument("--send-discord", action="store_true")
+    p_digest.add_argument("--ai-describe", action="store_true", help="use AI to add one-line task notes")
+    p_digest.add_argument("--ai-provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
+    p_digest.add_argument("--ai-model", default=None)
 
     sp_export = sub.add_parser("export")
     sub_export = sp_export.add_subparsers(dest="export_cmd", required=True)
@@ -213,6 +218,14 @@ def main() -> None:
     p_profile_state.add_argument("--out", default="./export/profiles_ai/global_state.md")
     p_profile_state.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
     p_profile_state.add_argument("--model", default=None)
+
+    p_profile_boot = sub_profile.add_parser("bootstrap", help="first-run bootstrap: sync + curate + global state")
+    p_profile_boot.add_argument("--all", action="store_true")
+    p_profile_boot.add_argument("--out-dir", default="./export/profiles_ai")
+    p_profile_boot.add_argument("--state-out", default="./export/profiles_ai/global_state.md")
+    p_profile_boot.add_argument("--meta-out", default="./export/profiles_ai/agent_bootstrap_state.json")
+    p_profile_boot.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
+    p_profile_boot.add_argument("--model", default=None)
 
     sp_sync = sub.add_parser("sync")
     sub_sync = sp_sync.add_subparsers(dest="sync_cmd", required=True)
@@ -323,6 +336,11 @@ def main() -> None:
                 timezone=s.timezone,
                 discord_webhook_url=s.discord_webhook_url,
                 send_discord=args.send_discord,
+                ai_describe=args.ai_describe,
+                ai_provider=args.ai_provider or s.ai_provider,
+                ai_model=args.ai_model or s.ai_model,
+                openai_api_key=s.openai_api_key,
+                openai_base_url=s.openai_base_url,
             )
         )
 
@@ -441,6 +459,61 @@ def main() -> None:
                     openai_base_url=s.openai_base_url,
                 )
             )
+        if args.profile_cmd == "bootstrap":
+            client = canvas_client(s)
+            # 1) sync base profile data
+            rc1 = sync_profiles(client, db_path=s.db_path, all_courses=args.all)
+            if rc1 != 0:
+                raise SystemExit(rc1)
+
+            provider = args.provider or s.ai_provider
+            model = args.model or s.ai_model
+
+            # 2) build per-course AI dossiers
+            rc2 = curate_profiles_ai(
+                client,
+                db_path=s.db_path,
+                out_dir=args.out_dir,
+                all_courses=args.all,
+                ai_provider=provider,
+                ai_model=model,
+                openai_api_key=s.openai_api_key,
+                openai_base_url=s.openai_base_url,
+                syllabus_link_keywords=s.syllabus_link_keywords,
+            )
+            if rc2 != 0:
+                raise SystemExit(rc2)
+
+            # 3) build global state
+            rc3 = generate_global_state_ai(
+                client,
+                db_path=s.db_path,
+                out_path=args.state_out,
+                all_courses=args.all,
+                ai_provider=provider,
+                ai_model=model,
+                openai_api_key=s.openai_api_key,
+                openai_base_url=s.openai_base_url,
+            )
+            if rc3 != 0:
+                raise SystemExit(rc3)
+
+            # 4) persist bootstrap meta state for future scheduling/automation
+            meta_path = Path(args.meta_out)
+            meta_path.parent.mkdir(parents=True, exist_ok=True)
+            meta = {
+                "createdAt": datetime.now(UTC).isoformat(),
+                "ai": {"provider": provider, "model": model},
+                "paths": {
+                    "profilesDir": str(Path(args.out_dir).resolve()),
+                    "globalState": str(Path(args.state_out).resolve()),
+                },
+                "allCourses": bool(args.all),
+                "notes": "Initial bootstrap completed: sync + curate + global state",
+            }
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
+            console.print(f"Wrote bootstrap meta: {meta_path}")
+            raise SystemExit(0)
 
     if args.cmd == "sync":
         s = load_settings(env_path)

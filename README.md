@@ -139,6 +139,9 @@ canvas-agent export md --days 30 --out-dir ./export/md
 # Print digest
 canvas-agent digest --days 7
 
+# AI-enhanced digest (adds one-line task descriptions)
+canvas-agent digest --days 7 --ai-describe --ai-provider auto
+
 # Send digest to Discord webhook
 canvas-agent digest --days 7 --send-discord
 ```
@@ -194,6 +197,15 @@ canvas-agent profile curate --all --provider auto --out-dir ./export/profiles_ai
 ```bash
 # Generate cross-course term/week/exam-progress state snapshot
 canvas-agent profile state --all --provider auto --out ./export/profiles_ai/global_state.md
+```
+
+10) First-run bootstrap (recommended):
+```bash
+# One command: sync profile data + AI dossier curation + global state + bootstrap meta
+canvas-agent profile bootstrap --all --provider auto \
+  --out-dir ./export/profiles_ai \
+  --state-out ./export/profiles_ai/global_state.md \
+  --meta-out ./export/profiles_ai/agent_bootstrap_state.json
 ```
 
 Global toggles:
