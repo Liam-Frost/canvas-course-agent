@@ -120,6 +120,20 @@ class CanvasClient:
             params["include[]"] = ["items"]
         return list(self._paginate(f"/api/v1/courses/{course_id}/modules", params=params))
 
+    def list_announcements(
+        self,
+        *,
+        context_codes: list[str],
+        active_only: bool = False,
+        latest_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"per_page": 100, "context_codes[]": context_codes}
+        if active_only:
+            params["active_only"] = True
+        if latest_only:
+            params["latest_only"] = True
+        return list(self._paginate("/api/v1/announcements", params=params))
+
     def list_assignments(self, course_id: int, *, include: list[str] | None = None) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"per_page": 100}
         if include:

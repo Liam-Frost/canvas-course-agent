@@ -12,6 +12,7 @@ from .storage.sqlite import (
     connect,
     list_courses,
     list_starred_course_ids,
+    replace_course_announcements,
     replace_course_modules,
     replace_course_people,
     upsert_assignment,
@@ -49,6 +50,7 @@ def sync_profiles(
     modules_total = 0
     items_total = 0
     submissions_total = 0
+    announcements_total = 0
 
     with conn:
         for cid in course_ids:
@@ -118,6 +120,15 @@ def sync_profiles(
                 else:
                     console.print(f"[yellow]Course {cid}: quizzes fetch failed: {type(e).__name__}: {e}[/yellow]")
 
+            # 6) announcements
+            try:
+                anns = client.list_announcements(context_codes=[f"course_{cid}"], active_only=False, latest_only=False)
+                replace_course_announcements(conn, cid, anns)
+                announcements_total += len(anns)
+                ok = True
+            except Exception as e:
+                console.print(f"[yellow]Course {cid}: announcements fetch failed: {type(e).__name__}: {e}[/yellow]")
+
             if ok:
                 synced += 1
 
@@ -128,6 +139,7 @@ def sync_profiles(
     t.add_row("modules", str(modules_total))
     t.add_row("module items", str(items_total))
     t.add_row("assignment submissions", str(submissions_total))
+    t.add_row("announcements", str(announcements_total))
     console.print(t)
 
     return 0
@@ -219,6 +231,14 @@ def export_profiles_md(
             (cid,),
         ).fetchall()
 
+        anns = conn.execute(
+            """
+            SELECT title, posted_at, html_url FROM course_announcements
+            WHERE course_id=? ORDER BY COALESCE(posted_at, delayed_post_at) DESC LIMIT 8
+            """,
+            (cid,),
+        ).fetchall()
+
         missing_count = sum(1 for s in subm if int(s["missing"] or 0) == 1)
         late_count = sum(1 for s in subm if int(s["late"] or 0) == 1)
         submitted_count = sum(1 for s in subm if s["submitted_at"])
@@ -272,6 +292,9 @@ def export_profiles_md(
         lines.append("")
         lines.append(f"## Upcoming (next {days} days)")
         future_count = 0
+        due_7d_count = 0
+        seven_day_end = now + timedelta(days=7)
+
         for a in asg:
             due = parse_canvas_dt(a["due_at"])
             if not due or not (now <= due <= end):
@@ -279,6 +302,8 @@ def export_profiles_md(
             url = f" {a['html_url']}" if a["html_url"] else ""
             lines.append(f"- Assignment: {a['name'] or '(untitled)'} — due `{a['due_at']}`{url}")
             future_count += 1
+            if now <= due <= seven_day_end:
+                due_7d_count += 1
 
         for q in quiz:
             ref = q["unlock_at"] or q["due_at"]
@@ -290,8 +315,20 @@ def export_profiles_md(
                 f"- Quiz: {q['title'] or '(untitled)'} — start `{q['unlock_at'] or ''}` due `{q['due_at'] or ''}`{url}"
             )
             future_count += 1
+            if now <= dt <= seven_day_end:
+                due_7d_count += 1
+
         if future_count == 0:
             lines.append("- (none in range)")
+
+        # lightweight risk score for weekly load/missing/late pressure
+        risk_score = min(100, missing_count * 25 + late_count * 15 + due_7d_count * 5)
+        if risk_score >= 60:
+            risk_level = "high"
+        elif risk_score >= 30:
+            risk_level = "medium"
+        else:
+            risk_level = "low"
 
         lines.append("")
         lines.append("## Submission snapshot")
@@ -299,6 +336,20 @@ def export_profiles_md(
         lines.append(f"- submitted_count: {submitted_count}")
         lines.append(f"- late_count: {late_count}")
         lines.append(f"- missing_count: {missing_count}")
+
+        lines.append("")
+        lines.append("## Risk")
+        lines.append(f"- risk_score: {risk_score}/100 ({risk_level})")
+        lines.append(f"- due_in_7d: {due_7d_count}")
+
+        lines.append("")
+        lines.append("## Recent announcements")
+        if anns:
+            for a in anns:
+                url = f" {a['html_url']}" if a["html_url"] else ""
+                lines.append(f"- `{a['posted_at'] or ''}` {a['title'] or '(untitled)'}{url}")
+        else:
+            lines.append("- (none synced)")
 
         if c["syllabus_body"]:
             lines.append("")

@@ -126,6 +126,19 @@ CREATE TABLE IF NOT EXISTS assignment_submissions (
   PRIMARY KEY (course_id, assignment_id)
 );
 
+CREATE TABLE IF NOT EXISTS course_announcements (
+  course_id INTEGER NOT NULL,
+  announcement_id INTEGER NOT NULL,
+  title TEXT,
+  posted_at TEXT,
+  delayed_post_at TEXT,
+  html_url TEXT,
+  message TEXT,
+  raw_json TEXT NOT NULL,
+  updated_at_local TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (course_id, announcement_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -443,3 +456,25 @@ def upsert_assignment_submission(conn: sqlite3.Connection, course_id: int, assig
             json.dumps(s, ensure_ascii=False),
         ),
     )
+
+
+def replace_course_announcements(conn: sqlite3.Connection, course_id: int, items: list[dict[str, Any]]) -> None:
+    conn.execute("DELETE FROM course_announcements WHERE course_id=?", (course_id,))
+    for a in items:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO course_announcements (
+              course_id, announcement_id, title, posted_at, delayed_post_at, html_url, message, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                course_id,
+                a.get("id"),
+                a.get("title"),
+                a.get("posted_at"),
+                a.get("delayed_post_at"),
+                a.get("html_url"),
+                a.get("message"),
+                json.dumps(a, ensure_ascii=False),
+            ),
+        )
