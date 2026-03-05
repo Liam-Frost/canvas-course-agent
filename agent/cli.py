@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+from getpass import getpass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -36,7 +38,7 @@ def load_settings(env_path: str) -> Settings:
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL") or None,
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN") or None,
         timezone=os.getenv("TIMEZONE", "UTC"),
-        ai_provider=os.getenv("AI_PROVIDER", "codex-oauth"),
+        ai_provider=os.getenv("AI_PROVIDER", "auto"),
         ai_model=os.getenv("AI_MODEL") or None,
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
@@ -64,6 +66,27 @@ def cmd_healthcheck(env_path: str) -> int:
     Path(s.db_path).parent.mkdir(parents=True, exist_ok=True)
     console.print("[green]OK[/green]")
     return 0
+
+
+def _upsert_env(env_path: str, key: str, value: str) -> None:
+    p = Path(env_path)
+    lines: list[str] = []
+    if p.exists():
+        lines = p.read_text().splitlines()
+
+    replaced = False
+    out: list[str] = []
+    for ln in lines:
+        if ln.startswith(f"{key}="):
+            out.append(f"{key}={value}")
+            replaced = True
+        else:
+            out.append(ln)
+
+    if not replaced:
+        out.append(f"{key}={value}")
+
+    p.write_text("\n".join(out) + "\n")
 
 
 def main() -> None:
@@ -163,6 +186,9 @@ def main() -> None:
     p_ai_doctor = sub_ai.add_parser("doctor", help="show adapter/auth readiness diagnostics")
     p_ai_doctor.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
     p_ai_doctor.add_argument("--model", default=None)
+
+    p_ai_auth = sub_ai.add_parser("auth", help="project-local auth setup flow")
+    p_ai_auth.add_argument("--provider", choices=["codex-oauth", "openai-api"], required=True)
 
     sp_profile = sub.add_parser("profile")
     sub_profile = sp_profile.add_subparsers(dest="profile_cmd", required=True)
@@ -301,7 +327,7 @@ def main() -> None:
     if args.cmd == "ai":
         s = load_settings(env_path)
         provider = args.provider or s.ai_provider
-        model = args.model or s.ai_model
+        model = getattr(args, "model", None) or s.ai_model
         adapter = AIAdapter(
             provider=provider,
             model=model,
@@ -313,6 +339,31 @@ def main() -> None:
             for line in adapter.doctor():
                 console.print("-", line)
             raise SystemExit(0)
+
+        if args.ai_cmd == "auth":
+            if args.provider == "openai-api":
+                console.print("Enter OPENAI_API_KEY (input hidden):")
+                key = getpass("").strip()
+                if not key:
+                    console.print("[red]No key entered.[/red]")
+                    raise SystemExit(1)
+                _upsert_env(env_path, "OPENAI_API_KEY", key)
+                _upsert_env(env_path, "AI_PROVIDER", "auto")
+                console.print(f"[green]Saved OPENAI_API_KEY to {env_path} and set AI_PROVIDER=auto[/green]")
+                raise SystemExit(0)
+
+            if args.provider == "codex-oauth":
+                console.print("Starting codex oauth flow...")
+                console.print("1) A login URL will appear.")
+                console.print("2) Open it in browser and sign in.")
+                console.print("3) If prompted, paste the final redirected URL back into this terminal.")
+                cp = subprocess.run(["codex", "login"], check=False)
+                if cp.returncode != 0:
+                    console.print("[red]codex login failed.[/red]")
+                    raise SystemExit(cp.returncode)
+                _upsert_env(env_path, "AI_PROVIDER", "auto")
+                console.print(f"[green]codex oauth login complete. Set AI_PROVIDER=auto in {env_path}[/green]")
+                raise SystemExit(0)
 
         if args.ai_cmd == "probe":
             try:

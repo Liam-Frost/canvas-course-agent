@@ -150,18 +150,22 @@ canvas-agent remind list
 canvas-agent remind disable 1
 ```
 
-7) AI adapter probe (phase 1):
+7) AI adapter setup + probe (phase 1):
 ```bash
 # Diagnose local auth/readiness first
 canvas-agent ai doctor
 
+# Project-local auth flow: codex oauth (browser login + redirect paste in terminal)
+canvas-agent ai auth --provider codex-oauth
+
+# Project-local auth flow: OpenAI API key (hidden prompt, writes .env)
+canvas-agent ai auth --provider openai-api
+
 # Auto mode (prefer OPENAI_API_KEY, fallback codex oauth)
 canvas-agent ai probe --provider auto --prompt "Reply with OK"
 
-# Force codex oauth via local codex CLI
+# Force provider for debugging
 canvas-agent ai probe --provider codex-oauth --prompt "Reply with OK"
-
-# Force OpenAI API
 canvas-agent ai probe --provider openai-api --model gpt-4.1-mini --prompt "Reply with OK"
 ```
 
