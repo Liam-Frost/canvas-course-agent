@@ -158,6 +158,10 @@ canvas-agent ai doctor
 # Auto mode (prefer OPENAI_API_KEY, fallback codex oauth)
 canvas-agent ai probe --provider auto --prompt "Reply with OK"
 
+# Codex OAuth auth flow (OpenClaw-style redirect paste)
+openclaw models auth login --provider openai-codex
+# complete browser login, then paste the FINAL redirected URL back to terminal
+
 # Force codex oauth via local codex CLI
 canvas-agent ai probe --provider codex-oauth --prompt "Reply with OK"
 
