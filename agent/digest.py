@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from rich.console import Console
 
@@ -26,6 +27,8 @@ class DigestItem:
     course_id: int | None = None
     item_id: int | None = None
     ai_note: str | None = None
+    ai_est_minutes: int | None = None
+    ai_next_step: str | None = None
 
 
 def _short_course_label(name: str, code: str | None) -> str:
@@ -179,40 +182,153 @@ def annotate_digest_items_ai(
     items: list[DigestItem],
     adapter: AIAdapter,
 ) -> None:
+    now = datetime.now(UTC)
+
     for it in items:
         if it.kind not in ("assignment", "quiz"):
             continue
 
         ann_titles: list[str] = []
+        learned_titles: list[str] = []
+        syllabus_signals: list[str] = []
+        grading_hint = ""
+        intrinsic_minutes: int | None = None
+
         if it.course_id is not None:
             rows = conn.execute(
-                "SELECT title FROM course_announcements WHERE course_id=? ORDER BY COALESCE(posted_at, delayed_post_at) DESC LIMIT 2",
+                "SELECT title FROM course_announcements WHERE course_id=? ORDER BY COALESCE(posted_at, delayed_post_at) DESC LIMIT 3",
                 (it.course_id,),
             ).fetchall()
             ann_titles = [str(r["title"] or "") for r in rows if (r["title"] or "").strip()]
 
+            # Infer "already learned" content from recently due tasks in same course.
+            hist = conn.execute(
+                """
+                SELECT name AS title, due_at FROM assignments
+                WHERE course_id=? AND due_at IS NOT NULL
+                ORDER BY due_at DESC LIMIT 12
+                """,
+                (it.course_id,),
+            ).fetchall()
+            for r in hist:
+                dt = parse_canvas_dt(r["due_at"])
+                if dt and dt < now:
+                    learned_titles.append(str(r["title"] or ""))
+                if len(learned_titles) >= 4:
+                    break
+
+            # Pull likely syllabus clues from AI curated profile if available.
+            code_row = conn.execute("SELECT course_code FROM courses WHERE id=?", (it.course_id,)).fetchone()
+            if code_row and code_row[0]:
+                safe = str(code_row[0]).replace("/", "-").replace(" ", "_")
+                for folder in ["./export/profiles_ai_live3", "./export/profiles_ai_live2", "./export/profiles_ai_live", "./export/profiles_ai"]:
+                    p = Path(folder) / f"{safe}.curated.md"
+                    if p.exists():
+                        txt = p.read_text(errors="ignore")
+                        # Keep only syllabus section chunk to avoid huge prompt.
+                        marker = "## Syllabus Source"
+                        i = txt.find(marker)
+                        if i != -1:
+                            syllabus_signals.append(txt[i : i + 600])
+                        else:
+                            syllabus_signals.append(txt[:300])
+                        break
+
+            if it.kind == "assignment" and it.item_id is not None:
+                rr = conn.execute("SELECT raw_json FROM assignments WHERE id=?", (it.item_id,)).fetchone()
+                if rr:
+                    try:
+                        raw = json.loads(rr[0] or "{}")
+                    except Exception:
+                        raw = {}
+                    pts = raw.get("points_possible")
+                    if pts is not None:
+                        try:
+                            pf = float(pts)
+                            grading_hint = f"points_possible={pf:g}"
+                            intrinsic_minutes = int(max(20, min(240, pf * 6)))
+                        except Exception:
+                            pass
+
+            if it.kind == "quiz" and it.item_id is not None:
+                rr = conn.execute("SELECT raw_json FROM quizzes WHERE id=?", (it.item_id,)).fetchone()
+                if rr:
+                    try:
+                        raw = json.loads(rr[0] or "{}")
+                    except Exception:
+                        raw = {}
+                    tl = raw.get("time_limit")
+                    if tl is not None:
+                        try:
+                            intrinsic_minutes = int(max(10, min(180, int(tl) + 20)))
+                            grading_hint = f"quiz_time_limit={int(tl)}"
+                        except Exception:
+                            pass
+
         prompt = "\n".join(
             [
-                "Write ONE short Chinese description (<=30 chars) for this Canvas task.",
-                "Must be concrete and action-oriented. No markdown, no prefix, one line only.",
+                "你是课程助教。基于课程上下文，为任务生成有用的digest元信息。",
+                "输出必须是JSON对象，格式：",
+                '{"desc":"...","est_minutes":90,"next_step":"..."}',
+                "约束:",
+                "- desc: 20~40字，说明任务涉及内容（结合已学内容推测）",
+                "- est_minutes: 整数，给出完成该任务的现实用时估计",
+                "- next_step: 1条可执行动作，动词开头",
+                "- 不要输出除JSON外的任何文字",
                 f"Course: {it.course}",
                 f"Type: {it.kind}",
                 f"Task: {it.title}",
                 f"Due/Start: {it.due_at or it.start_at}",
+                f"Intrinsic estimate hint: {intrinsic_minutes if intrinsic_minutes is not None else '(none)'}",
+                f"Grading hint: {grading_hint or '(none)'}",
+                "Recent learned topics (from already-due tasks):",
+                *([f"- {t}" for t in learned_titles] or ["- (none)"]),
                 "Recent announcements:",
                 *([f"- {t}" for t in ann_titles] or ["- (none)"]),
+                "Syllabus clues:",
+                *([f"- {t}" for t in syllabus_signals] or ["- (none)"]),
             ]
         )
 
         try:
             text = adapter.complete(prompt).strip()
-            # keep only first line and clamp
-            text = text.splitlines()[0].strip()
-            if len(text) > 60:
-                text = text[:60].rstrip() + "…"
-            it.ai_note = text
-        except AIAdapterError:
+            data = None
+            try:
+                data = json.loads(text)
+            except Exception:
+                # tolerant extraction when model wraps with stray text
+                a, b = text.find("{"), text.rfind("}")
+                if a != -1 and b != -1 and b > a:
+                    data = json.loads(text[a : b + 1])
+
+            if not isinstance(data, dict):
+                raise ValueError("invalid ai json")
+
+            desc = str(data.get("desc") or "").replace("�", "").strip()
+            if len(desc) > 80:
+                desc = desc[:80].rstrip() + "…"
+            if not desc:
+                desc = f"完成 {it.title} 并按时提交"
+
+            est = data.get("est_minutes")
+            try:
+                est_i = int(est)
+                est_i = max(10, min(600, est_i))
+            except Exception:
+                est_i = intrinsic_minutes
+
+            next_step = str(data.get("next_step") or "").strip()
+            if len(next_step) > 60:
+                next_step = next_step[:60].rstrip() + "…"
+
+            it.ai_note = desc
+            it.ai_est_minutes = est_i
+            it.ai_next_step = next_step or None
+
+        except Exception:
             it.ai_note = None
+            it.ai_est_minutes = intrinsic_minutes
+            it.ai_next_step = None
 
 
 def _item_ref_dt(it: DigestItem):
@@ -264,6 +380,10 @@ def format_weekly_digest_v2(
             lines.append(f"- {icon} **[{it.course}]** {it.title} · `{local} {tzs}`")
             if it.ai_note:
                 lines.append(f"  - {it.ai_note}")
+            if it.ai_est_minutes is not None:
+                lines.append(f"  - 预计用时: ~{it.ai_est_minutes} 分钟")
+            if it.ai_next_step:
+                lines.append(f"  - 下一步: {it.ai_next_step}")
             if it.url:
                 lines.append(f"  - [Open]({it.url})")
         lines.append("")
@@ -394,6 +514,10 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
             lines.append(f"> Task: {it.title}")
             if it.ai_note:
                 lines.append(f"> Note: {it.ai_note}")
+            if it.ai_est_minutes is not None:
+                lines.append(f"> ETA: ~{it.ai_est_minutes} min")
+            if it.ai_next_step:
+                lines.append(f"> Next: {it.ai_next_step}")
             if time_line:
                 lines.append(f"> Time: {time_line}")
             if it.url:
@@ -405,15 +529,28 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
 
 
 def build_action_plan_ai(*, adapter: AIAdapter, items: list[DigestItem], timezone: str) -> list[str]:
+    # Prioritize by deadline, then by estimated minutes (bigger blocks earlier in planning).
+    ranked = sorted(
+        items,
+        key=lambda it: (
+            _item_ref_dt(it) or datetime.max.replace(tzinfo=UTC),
+            -(it.ai_est_minutes or 0),
+        ),
+    )
+
     top = []
-    for it in items[:10]:
+    for it in ranked[:10]:
         dt = _item_ref_dt(it)
-        top.append(f"- {it.course} | {it.kind} | {it.title} | {dt.isoformat() if dt else ''}")
+        top.append(
+            f"- {it.course} | {it.kind} | {it.title} | due={dt.isoformat() if dt else ''} | "
+            f"eta={it.ai_est_minutes or 'unknown'} | note={it.ai_note or ''} | next={it.ai_next_step or ''}"
+        )
 
     prompt = "\n".join(
         [
-            "给我一个本周学习行动清单，最多5条，每条一句中文，不要序号。",
-            "优先考虑48小时内截止和高压力任务。",
+            "给我一个可执行的本周行动清单，最多5条，每条一句中文，不要空话。",
+            "必须基于任务的截止时间和预计用时，优先安排48小时内截止任务。",
+            "每条需要包含：先做什么、何时做、做多少（时长/批次）。",
             f"Timezone: {timezone}",
             "Tasks:",
             *top,
