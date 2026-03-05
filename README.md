@@ -155,7 +155,7 @@ canvas-agent remind disable 1
 # Diagnose local auth/readiness first
 canvas-agent ai doctor
 
-# Project-local auth flow: codex oauth (browser login + redirect paste in terminal)
+# Project-local auth flow: codex oauth (device-auth; will prompt paste/code in terminal)
 canvas-agent ai auth --provider codex-oauth
 
 # Project-local auth flow: OpenAI API key (hidden prompt, writes .env)

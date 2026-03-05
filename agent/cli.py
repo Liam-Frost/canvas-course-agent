@@ -353,14 +353,25 @@ def main() -> None:
                 raise SystemExit(0)
 
             if args.provider == "codex-oauth":
-                console.print("Starting codex oauth flow...")
-                console.print("1) A login URL will appear.")
+                console.print("Starting codex oauth flow (device auth mode)...")
+                console.print("1) Terminal will show a login URL.")
                 console.print("2) Open it in browser and sign in.")
-                console.print("3) If prompted, paste the final redirected URL back into this terminal.")
-                cp = subprocess.run(["codex", "login"], check=False)
+                console.print("3) Return here and paste whatever codex asks for (code / redirect URL).")
+                console.print("4) Wait for terminal to print success.")
+
+                cp = subprocess.run(["codex", "login", "--device-auth"], check=False)
                 if cp.returncode != 0:
                     console.print("[red]codex login failed.[/red]")
                     raise SystemExit(cp.returncode)
+
+                # Immediate post-check so user gets explicit feedback.
+                st = subprocess.run(["codex", "login", "status"], check=False, capture_output=True, text=True)
+                if st.stdout:
+                    console.print(st.stdout.strip())
+                if st.returncode != 0:
+                    console.print("[red]codex login status check failed.[/red]")
+                    raise SystemExit(st.returncode)
+
                 _upsert_env(env_path, "AI_PROVIDER", "auto")
                 console.print(f"[green]codex oauth login complete. Set AI_PROVIDER=auto in {env_path}[/green]")
                 raise SystemExit(0)
