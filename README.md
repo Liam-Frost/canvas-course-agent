@@ -22,7 +22,7 @@ Set env vars (recommended via `.env`):
 - `DB_PATH` (default: `./data/agent.db`)
 - `TIMEZONE` (IANA timezone for display, e.g. `America/Vancouver`)
 - `DISCORD_WEBHOOK_URL` (optional for v0; later we can switch to a bot)
-- `AI_PROVIDER` (`codex-oauth` or `openai-api`, default: `codex-oauth`)
+- `AI_PROVIDER` (`auto`, `codex-oauth`, or `openai-api`; default: `auto`)
 - `AI_MODEL` (optional model override)
 - `OPENAI_API_KEY` (required when `AI_PROVIDER=openai-api`)
 - `OPENAI_BASE_URL` (optional, default `https://api.openai.com/v1`)
@@ -152,10 +152,16 @@ canvas-agent remind disable 1
 
 7) AI adapter probe (phase 1):
 ```bash
-# Use codex oauth via local codex CLI
+# Diagnose local auth/readiness first
+canvas-agent ai doctor
+
+# Auto mode (prefer OPENAI_API_KEY, fallback codex oauth)
+canvas-agent ai probe --provider auto --prompt "Reply with OK"
+
+# Force codex oauth via local codex CLI
 canvas-agent ai probe --provider codex-oauth --prompt "Reply with OK"
 
-# Use OpenAI API
+# Force OpenAI API
 canvas-agent ai probe --provider openai-api --model gpt-4.1-mini --prompt "Reply with OK"
 ```
 

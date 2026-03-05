@@ -156,9 +156,13 @@ def main() -> None:
     sub_ai = sp_ai.add_subparsers(dest="ai_cmd", required=True)
 
     p_ai_probe = sub_ai.add_parser("probe", help="probe AI adapter with a test prompt")
-    p_ai_probe.add_argument("--provider", choices=["codex-oauth", "openai-api"], default=None)
+    p_ai_probe.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
     p_ai_probe.add_argument("--model", default=None)
     p_ai_probe.add_argument("--prompt", default="Say OK")
+
+    p_ai_doctor = sub_ai.add_parser("doctor", help="show adapter/auth readiness diagnostics")
+    p_ai_doctor.add_argument("--provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
+    p_ai_doctor.add_argument("--model", default=None)
 
     sp_profile = sub.add_parser("profile")
     sub_profile = sp_profile.add_subparsers(dest="profile_cmd", required=True)
@@ -304,13 +308,20 @@ def main() -> None:
             openai_api_key=s.openai_api_key,
             openai_base_url=s.openai_base_url,
         )
-        try:
-            out = adapter.complete(args.prompt)
-            console.print(out)
+
+        if args.ai_cmd == "doctor":
+            for line in adapter.doctor():
+                console.print("-", line)
             raise SystemExit(0)
-        except AIAdapterError as e:
-            console.print(f"[red]AI probe failed:[/red] {e}")
-            raise SystemExit(1)
+
+        if args.ai_cmd == "probe":
+            try:
+                out = adapter.complete(args.prompt)
+                console.print(out)
+                raise SystemExit(0)
+            except AIAdapterError as e:
+                console.print(f"[red]AI probe failed:[/red] {e}")
+                raise SystemExit(1)
 
     if args.cmd == "profile":
         s = load_settings(env_path)
