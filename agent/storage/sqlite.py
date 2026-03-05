@@ -182,6 +182,44 @@ CREATE TABLE IF NOT EXISTS course_discussions (
   PRIMARY KEY (course_id, topic_id)
 );
 
+CREATE TABLE IF NOT EXISTS ai_task_mapping_raw (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  course_id INTEGER,
+  candidate_topic TEXT,
+  confidence REAL,
+  evidence TEXT,
+  model_version TEXT,
+  raw_json TEXT NOT NULL,
+  generated_at_utc TEXT NOT NULL,
+  UNIQUE(kind, item_id, candidate_topic, generated_at_utc)
+);
+
+CREATE TABLE IF NOT EXISTS ai_task_mapping_resolved (
+  kind TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  course_id INTEGER,
+  primary_topic TEXT,
+  alternatives_json TEXT,
+  confidence REAL,
+  evidence TEXT,
+  source TEXT NOT NULL, -- ai|manual
+  model_version TEXT,
+  updated_at_utc TEXT NOT NULL,
+  PRIMARY KEY (kind, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_task_mapping_override (
+  kind TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  course_id INTEGER,
+  topic TEXT NOT NULL,
+  note TEXT,
+  updated_at_utc TEXT NOT NULL,
+  PRIMARY KEY (kind, item_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -591,3 +629,87 @@ def replace_course_discussions(conn: sqlite3.Connection, course_id: int, items: 
                 json.dumps(d, ensure_ascii=False),
             ),
         )
+
+
+def upsert_ai_mapping_raw(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    item_id: int,
+    course_id: int | None,
+    candidate_topic: str,
+    confidence: float | None,
+    evidence: str | None,
+    model_version: str | None,
+    raw_obj: dict[str, Any],
+    generated_at_utc: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO ai_task_mapping_raw (
+          kind, item_id, course_id, candidate_topic, confidence, evidence, model_version, raw_json, generated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            kind,
+            item_id,
+            course_id,
+            candidate_topic,
+            confidence,
+            evidence,
+            model_version,
+            json.dumps(raw_obj, ensure_ascii=False),
+            generated_at_utc,
+        ),
+    )
+
+
+def upsert_ai_mapping_resolved(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    item_id: int,
+    course_id: int | None,
+    primary_topic: str | None,
+    alternatives: list[str],
+    confidence: float | None,
+    evidence: str | None,
+    source: str,
+    model_version: str | None,
+    updated_at_utc: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO ai_task_mapping_resolved (
+          kind, item_id, course_id, primary_topic, alternatives_json, confidence, evidence, source, model_version, updated_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(kind, item_id) DO UPDATE SET
+          course_id=excluded.course_id,
+          primary_topic=excluded.primary_topic,
+          alternatives_json=excluded.alternatives_json,
+          confidence=excluded.confidence,
+          evidence=excluded.evidence,
+          source=excluded.source,
+          model_version=excluded.model_version,
+          updated_at_utc=excluded.updated_at_utc;
+        """,
+        (
+            kind,
+            item_id,
+            course_id,
+            primary_topic,
+            json.dumps(alternatives, ensure_ascii=False),
+            confidence,
+            evidence,
+            source,
+            model_version,
+            updated_at_utc,
+        ),
+    )
+
+
+def get_ai_mapping_override(conn: sqlite3.Connection, *, kind: str, item_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT topic, note FROM ai_task_mapping_override WHERE kind=? AND item_id=?",
+        (kind, item_id),
+    ).fetchone()

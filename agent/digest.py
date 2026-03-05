@@ -9,7 +9,14 @@ from rich.console import Console
 
 from .ai_adapter import AIAdapter, AIAdapterError
 from .discord_webhook import discord_send
-from .storage.sqlite import connect, list_courses, list_starred_course_ids
+from .storage.sqlite import (
+    connect,
+    get_ai_mapping_override,
+    list_courses,
+    list_starred_course_ids,
+    upsert_ai_mapping_raw,
+    upsert_ai_mapping_resolved,
+)
 from .timeutil import fmt_canvas_dt_2line, get_tz, parse_canvas_dt, tz_label
 
 console = Console()
@@ -269,11 +276,15 @@ def annotate_digest_items_ai(
             [
                 "你是课程助教。基于课程上下文，为任务生成有用的digest元信息。",
                 "输出必须是JSON对象，格式：",
-                '{"desc":"...","est_minutes":90,"next_step":"..."}',
+                '{"desc":"...","est_minutes":90,"next_step":"...","topic":"...","confidence":0.0,"evidence":"...","alternatives":["..."]}',
                 "约束:",
                 "- desc: 20~40字，说明任务涉及内容（结合已学内容推测）",
                 "- est_minutes: 整数，给出完成该任务的现实用时估计",
                 "- next_step: 1条可执行动作，动词开头",
+                "- topic: 任务主要对应的课程主题",
+                "- confidence: 0~1",
+                "- evidence: 命中依据（简短）",
+                "- alternatives: 可选主题列表（0~3个）",
                 "- 不要输出除JSON外的任何文字",
                 f"Course: {it.course}",
                 f"Type: {it.kind}",
@@ -320,6 +331,55 @@ def annotate_digest_items_ai(
             next_step = str(data.get("next_step") or "").strip()
             if len(next_step) > 60:
                 next_step = next_step[:60].rstrip() + "…"
+
+            topic = str(data.get("topic") or "").strip()
+            try:
+                conf = float(data.get("confidence"))
+                conf = max(0.0, min(1.0, conf))
+            except Exception:
+                conf = 0.5
+            evidence = str(data.get("evidence") or "").strip()
+            alts_raw = data.get("alternatives") or []
+            alternatives = [str(x).strip() for x in alts_raw if str(x).strip()][:3]
+
+            # apply manual override if exists
+            if it.item_id is not None:
+                ov = get_ai_mapping_override(conn, kind=it.kind, item_id=it.item_id)
+                if ov is not None and ov[0]:
+                    topic = str(ov[0])
+                    conf = 1.0
+
+                ts = datetime.now(UTC).replace(microsecond=0).isoformat()
+                if topic:
+                    upsert_ai_mapping_raw(
+                        conn,
+                        kind=it.kind,
+                        item_id=it.item_id,
+                        course_id=it.course_id,
+                        candidate_topic=topic,
+                        confidence=conf,
+                        evidence=evidence,
+                        model_version=adapter.model,
+                        raw_obj=data,
+                        generated_at_utc=ts,
+                    )
+
+                    upsert_ai_mapping_resolved(
+                        conn,
+                        kind=it.kind,
+                        item_id=it.item_id,
+                        course_id=it.course_id,
+                        primary_topic=topic,
+                        alternatives=alternatives,
+                        confidence=conf,
+                        evidence=evidence,
+                        source="manual" if (ov is not None and ov[0]) else "ai",
+                        model_version=adapter.model,
+                        updated_at_utc=ts,
+                    )
+
+            if topic and conf < 0.6:
+                desc = f"可能涉及{topic}：{desc}"
 
             it.ai_note = desc
             it.ai_est_minutes = est_i
@@ -616,6 +676,7 @@ def cmd_digest(
 
     if ai_describe and items and adapter is not None:
         annotate_digest_items_ai(conn=conn, items=items, adapter=adapter)
+        conn.commit()
 
     if weekly_v2:
         plan = build_action_plan_ai(adapter=adapter, items=items, timezone=timezone) if (ai_weekly_plan and adapter is not None) else None
