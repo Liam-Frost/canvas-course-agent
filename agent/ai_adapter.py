@@ -55,7 +55,7 @@ class AIAdapter:
             notes.append(f"OPENAI_BASE_URL: {self.openai_base_url}")
 
         if p in ("auto", "codex-oauth"):
-            notes.append("If codex oauth fails, run: `openclaw models auth login --provider openai-codex` (it supports redirect URL paste flow).")
+            notes.append("If codex oauth fails, run: `codex login` (or `openclaw models auth login --provider openai-codex`).")
 
         return notes
 
@@ -84,8 +84,8 @@ class AIAdapter:
             msg = (cp.stderr or cp.stdout or "").strip()
             if "401" in msg or "Unauthorized" in msg or "Missing bearer" in msg:
                 raise AIAdapterError(
-                    "codex oauth/auth invalid. Run `openclaw models auth login --provider openai-codex` "
-                    "(redirect URL paste flow), then retry."
+                    "codex oauth/auth invalid. Run `codex login` "
+                    "(or `openclaw models auth login --provider openai-codex`) and retry."
                 )
             raise AIAdapterError(f"codex exec failed ({cp.returncode}): {msg}")
 
