@@ -215,6 +215,86 @@ def annotate_digest_items_ai(
             it.ai_note = None
 
 
+def _item_ref_dt(it: DigestItem):
+    if it.kind == "quiz":
+        return parse_canvas_dt(it.start_at) or parse_canvas_dt(it.due_at)
+    return parse_canvas_dt(it.due_at) or parse_canvas_dt(it.start_at)
+
+
+def format_weekly_digest_v2(
+    *,
+    items: list[DigestItem],
+    timezone: str,
+    now_utc: datetime | None = None,
+    action_plan: list[str] | None = None,
+) -> str:
+    tz = get_tz(timezone)
+    tzs = tz_label(tz)
+    now = now_utc or datetime.now(UTC)
+    h48 = now + timedelta(hours=48)
+    h7d = now + timedelta(days=7)
+    h14d = now + timedelta(days=14)
+
+    urgent: list[DigestItem] = []
+    this_week: list[DigestItem] = []
+    next_week: list[DigestItem] = []
+
+    for it in items:
+        dt = _item_ref_dt(it)
+        if not dt:
+            continue
+        if now <= dt <= h48:
+            urgent.append(it)
+        elif h48 < dt <= h7d:
+            this_week.append(it)
+        elif h7d < dt <= h14d:
+            next_week.append(it)
+
+    def _render_block(title: str, block: list[DigestItem]) -> list[str]:
+        lines: list[str] = [f"**{title}**"]
+        if not block:
+            lines.append("- (none)")
+            lines.append("")
+            return lines
+
+        for it in sorted(block, key=lambda x: _item_ref_dt(x) or datetime.max.replace(tzinfo=UTC)):
+            dt = _item_ref_dt(it)
+            local = dt.astimezone(tz).strftime("%m-%d %a %H:%M") if dt else "(unknown)"
+            icon = "🧪" if it.kind == "quiz" else ("📝" if it.kind == "assignment" else "⏰")
+            lines.append(f"- {icon} **[{it.course}]** {it.title} · `{local} {tzs}`")
+            if it.ai_note:
+                lines.append(f"  - {it.ai_note}")
+            if it.url:
+                lines.append(f"  - [Open]({it.url})")
+        lines.append("")
+        return lines
+
+    total = len(items)
+    high = len(urgent)
+
+    out: list[str] = []
+    out.append(f"**Weekly Digest v2** ({tzs})")
+    out.append(f"- 总任务: **{total}** | 48h高优先级: **{high}**")
+    out.append("")
+    out += _render_block("🔥 48h 内", urgent)
+    out += _render_block("📌 本周其余", this_week)
+    out += _render_block("🧊 下周预告", next_week)
+
+    out.append("**✅ 本周行动清单**")
+    if action_plan:
+        for a in action_plan[:5]:
+            out.append(f"- [ ] {a}")
+    else:
+        # fallback checklist from urgent tasks
+        if urgent:
+            for it in urgent[:5]:
+                out.append(f"- [ ] 优先完成 {it.course} / {it.title}")
+        else:
+            out.append("- [ ] 清空本周低优先级待办")
+
+    return "\n".join(out)
+
+
 def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     tz = get_tz(timezone)
     tzs = tz_label(tz)
@@ -324,6 +404,32 @@ def format_digest(*, items: list[DigestItem], days: int, timezone: str) -> str:
     return "\n".join(lines)
 
 
+def build_action_plan_ai(*, adapter: AIAdapter, items: list[DigestItem], timezone: str) -> list[str]:
+    top = []
+    for it in items[:10]:
+        dt = _item_ref_dt(it)
+        top.append(f"- {it.course} | {it.kind} | {it.title} | {dt.isoformat() if dt else ''}")
+
+    prompt = "\n".join(
+        [
+            "给我一个本周学习行动清单，最多5条，每条一句中文，不要序号。",
+            "优先考虑48小时内截止和高压力任务。",
+            f"Timezone: {timezone}",
+            "Tasks:",
+            *top,
+        ]
+    )
+
+    try:
+        out = adapter.complete(prompt)
+    except AIAdapterError:
+        return []
+
+    lines = [ln.strip("- •\t ") for ln in out.splitlines() if ln.strip()]
+    clean = [ln for ln in lines if ln]
+    return clean[:5]
+
+
 def _split_for_discord(text: str, limit: int = 1800) -> list[str]:
     if len(text) <= limit:
         return [text]
@@ -356,20 +462,29 @@ def cmd_digest(
     ai_model: str | None = None,
     openai_api_key: str | None = None,
     openai_base_url: str = "https://api.openai.com/v1",
+    weekly_v2: bool = False,
+    ai_weekly_plan: bool = False,
 ) -> int:
     conn = connect(db_path)
     items = build_digest(db_path=db_path, days=days, all_courses=all_courses, timezone=timezone)
 
-    if ai_describe and items:
+    adapter: AIAdapter | None = None
+    if (ai_describe or ai_weekly_plan) and items:
         adapter = AIAdapter(
             provider=ai_provider,
             model=ai_model,
             openai_api_key=openai_api_key,
             openai_base_url=openai_base_url,
         )
+
+    if ai_describe and items and adapter is not None:
         annotate_digest_items_ai(conn=conn, items=items, adapter=adapter)
 
-    msg = format_digest(items=items, days=days, timezone=timezone)
+    if weekly_v2:
+        plan = build_action_plan_ai(adapter=adapter, items=items, timezone=timezone) if (ai_weekly_plan and adapter is not None) else None
+        msg = format_weekly_digest_v2(items=items, timezone=timezone, action_plan=plan)
+    else:
+        msg = format_digest(items=items, days=days, timezone=timezone)
 
     console.print(msg)
 

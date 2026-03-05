@@ -163,6 +163,8 @@ def main() -> None:
     p_digest.add_argument("--ai-describe", action="store_true", help="use AI to add one-line task notes")
     p_digest.add_argument("--ai-provider", choices=["auto", "codex-oauth", "openai-api"], default=None)
     p_digest.add_argument("--ai-model", default=None)
+    p_digest.add_argument("--weekly-v2", action="store_true", help="risk-prioritized weekly digest layout")
+    p_digest.add_argument("--ai-weekly-plan", action="store_true", help="AI-generated weekly action checklist (for --weekly-v2)")
 
     sp_export = sub.add_parser("export")
     sub_export = sp_export.add_subparsers(dest="export_cmd", required=True)
@@ -341,6 +343,8 @@ def main() -> None:
                 ai_model=args.ai_model or s.ai_model,
                 openai_api_key=s.openai_api_key,
                 openai_base_url=s.openai_base_url,
+                weekly_v2=args.weekly_v2,
+                ai_weekly_plan=args.ai_weekly_plan,
             )
         )
 

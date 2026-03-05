@@ -142,6 +142,9 @@ canvas-agent digest --days 7
 # AI-enhanced digest (adds one-line task descriptions)
 canvas-agent digest --days 7 --ai-describe --ai-provider auto
 
+# Weekly digest v2 (risk-prioritized) + AI action checklist
+canvas-agent digest --days 14 --weekly-v2 --ai-describe --ai-weekly-plan --ai-provider auto
+
 # Send digest to Discord webhook
 canvas-agent digest --days 7 --send-discord
 ```
