@@ -20,6 +20,7 @@ from .remind_custom import cmd_remind_add, cmd_remind_disable, cmd_remind_list
 from .telegram_cmd import telegram_link
 from .upcoming import upcoming
 from .profile import sync_profiles, export_profiles_md
+from .ai_adapter import AIAdapter, AIAdapterError
 
 console = Console()
 
@@ -35,6 +36,10 @@ def load_settings(env_path: str) -> Settings:
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL") or None,
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN") or None,
         timezone=os.getenv("TIMEZONE", "UTC"),
+        ai_provider=os.getenv("AI_PROVIDER", "codex-oauth"),
+        ai_model=os.getenv("AI_MODEL") or None,
+        openai_api_key=os.getenv("OPENAI_API_KEY") or None,
+        openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
     )
 
 
@@ -49,6 +54,9 @@ def cmd_healthcheck(env_path: str) -> int:
     console.print("canvas_base_url:", s.canvas_base_url)
     console.print("db_path:", s.db_path)
     console.print("discord_webhook_url set:", bool(s.discord_webhook_url))
+    console.print("ai_provider:", s.ai_provider)
+    console.print("ai_model:", s.ai_model or "(default)")
+    console.print("openai_api_key set:", bool(s.openai_api_key))
 
     if not s.canvas_access_token:
         console.print("[yellow]CANVAS_ACCESS_TOKEN not set (expected for real API calls).[/yellow]")
@@ -143,6 +151,14 @@ def main() -> None:
     p_up = sub.add_parser("upcoming")
     p_up.add_argument("--days", type=int, default=14)
     p_up.add_argument("--all", action="store_true")
+
+    sp_ai = sub.add_parser("ai")
+    sub_ai = sp_ai.add_subparsers(dest="ai_cmd", required=True)
+
+    p_ai_probe = sub_ai.add_parser("probe", help="probe AI adapter with a test prompt")
+    p_ai_probe.add_argument("--provider", choices=["codex-oauth", "openai-api"], default=None)
+    p_ai_probe.add_argument("--model", default=None)
+    p_ai_probe.add_argument("--prompt", default="Say OK")
 
     sp_profile = sub.add_parser("profile")
     sub_profile = sp_profile.add_subparsers(dest="profile_cmd", required=True)
@@ -277,6 +293,24 @@ def main() -> None:
     if args.cmd == "upcoming":
         s = load_settings(env_path)
         raise SystemExit(upcoming(db_path=s.db_path, days=args.days, all_courses=args.all, timezone=s.timezone))
+
+    if args.cmd == "ai":
+        s = load_settings(env_path)
+        provider = args.provider or s.ai_provider
+        model = args.model or s.ai_model
+        adapter = AIAdapter(
+            provider=provider,
+            model=model,
+            openai_api_key=s.openai_api_key,
+            openai_base_url=s.openai_base_url,
+        )
+        try:
+            out = adapter.complete(args.prompt)
+            console.print(out)
+            raise SystemExit(0)
+        except AIAdapterError as e:
+            console.print(f"[red]AI probe failed:[/red] {e}")
+            raise SystemExit(1)
 
     if args.cmd == "profile":
         s = load_settings(env_path)

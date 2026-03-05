@@ -10,3 +10,9 @@ class Settings(BaseModel):
     discord_webhook_url: str | None = Field(default=None)
     telegram_bot_token: str | None = Field(default=None)
     timezone: str = Field(default="UTC")
+
+    # AI adapter (phase 1)
+    ai_provider: str = Field(default="codex-oauth")
+    ai_model: str | None = Field(default=None)
+    openai_api_key: str | None = Field(default=None)
+    openai_base_url: str = Field(default="https://api.openai.com/v1")

@@ -22,6 +22,10 @@ Set env vars (recommended via `.env`):
 - `DB_PATH` (default: `./data/agent.db`)
 - `TIMEZONE` (IANA timezone for display, e.g. `America/Vancouver`)
 - `DISCORD_WEBHOOK_URL` (optional for v0; later we can switch to a bot)
+- `AI_PROVIDER` (`codex-oauth` or `openai-api`, default: `codex-oauth`)
+- `AI_MODEL` (optional model override)
+- `OPENAI_API_KEY` (required when `AI_PROVIDER=openai-api`)
+- `OPENAI_BASE_URL` (optional, default `https://api.openai.com/v1`)
 
 Example (`.env`):
 ```bash
@@ -144,6 +148,15 @@ canvas-agent remind add --title "Go to work" --at "2026-03-05 13:00" --channels 
 canvas-agent remind add --title "Stretch" --in 90m --channels telegram --silent
 canvas-agent remind list
 canvas-agent remind disable 1
+```
+
+7) AI adapter probe (phase 1):
+```bash
+# Use codex oauth via local codex CLI
+canvas-agent ai probe --provider codex-oauth --prompt "Reply with OK"
+
+# Use OpenAI API
+canvas-agent ai probe --provider openai-api --model gpt-4.1-mini --prompt "Reply with OK"
 ```
 
 Global toggles:
