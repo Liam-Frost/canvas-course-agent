@@ -7,6 +7,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from .ai_adapter import AIAdapter, AIAdapterError
+
 from .providers.canvas import CanvasClient
 from .storage.sqlite import (
     connect,
@@ -506,4 +508,128 @@ def export_profiles_md(
 
     console.print(f"Wrote course profiles: {written} -> {out}")
     console.print(f"Wrote profile index: {idx_path}")
+    return 0
+
+
+def curate_profiles_ai(
+    *,
+    db_path: str,
+    out_dir: str = "./export/profiles_ai",
+    all_courses: bool = False,
+    ai_provider: str = "auto",
+    ai_model: str | None = None,
+    openai_api_key: str | None = None,
+    openai_base_url: str = "https://api.openai.com/v1",
+) -> int:
+    conn = connect(db_path)
+    course_ids = _selected_course_ids(conn, all_courses=all_courses)
+    if not course_ids:
+        console.print("No courses selected. Star courses first or use --all.")
+        return 1
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    adapter = AIAdapter(
+        provider=ai_provider,
+        model=ai_model,
+        openai_api_key=openai_api_key,
+        openai_base_url=openai_base_url,
+    )
+
+    written = 0
+
+    for cid in course_ids:
+        c = conn.execute(
+            "SELECT id, name, course_code, term_name, syllabus_body, raw_json FROM courses WHERE id=?",
+            (cid,),
+        ).fetchone()
+        if not c:
+            continue
+
+        pages = conn.execute(
+            "SELECT title, html_url, updated_at FROM course_pages WHERE course_id=? ORDER BY updated_at DESC LIMIT 20",
+            (cid,),
+        ).fetchall()
+        files = conn.execute(
+            "SELECT display_name, content_type, modified_at, url FROM course_files WHERE course_id=? ORDER BY modified_at DESC LIMIT 30",
+            (cid,),
+        ).fetchall()
+        anns = conn.execute(
+            "SELECT title, posted_at, html_url FROM course_announcements WHERE course_id=? ORDER BY COALESCE(posted_at, '') DESC LIMIT 10",
+            (cid,),
+        ).fetchall()
+        upcoming_asg = conn.execute(
+            "SELECT name, due_at, html_url FROM assignments WHERE course_id=? ORDER BY due_at LIMIT 20",
+            (cid,),
+        ).fetchall()
+
+        syllabus_hint_pages = [
+            f"- {p['title']} ({p['html_url'] or ''})"
+            for p in pages
+            if (p["title"] or "").lower().find("syll") != -1
+        ]
+        syllabus_hint_files = [
+            f"- {f['display_name']} ({f['url'] or ''})"
+            for f in files
+            if any(k in (f["display_name"] or "").lower() for k in ["syll", "outline", "course info"])
+        ]
+
+        prompt = "\n".join(
+            [
+                "You are organizing a Canvas course archive.",
+                "Task: identify the most likely syllabus source and output a structured course dossier in markdown.",
+                "Use this template exactly:\n",
+                "# <course name>",
+                "## Syllabus Source",
+                "- Primary: ...",
+                "- Why: ...",
+                "## Course Structure",
+                "- Goals: ...",
+                "- Policies: ...",
+                "- Grading: ...",
+                "## Key Logistics",
+                "- Instructors/TAs: ...",
+                "- Important links: ...",
+                "## Upcoming Priorities",
+                "- [ ] ...",
+                "## Questions to Clarify",
+                "- ...",
+                "",
+                f"Course: {c['name']} ({c['course_code']}) term={c['term_name']}",
+                "",
+                "Syllabus HTML (may be empty):",
+                (c["syllabus_body"] or "(empty)")[:6000],
+                "",
+                "Possible syllabus pages:",
+                *(syllabus_hint_pages or ["- (none)"]),
+                "",
+                "Possible syllabus files:",
+                *(syllabus_hint_files or ["- (none)"]),
+                "",
+                "Recent announcements:",
+                *[
+                    f"- {a['posted_at'] or ''} | {a['title'] or ''} | {a['html_url'] or ''}"
+                    for a in anns
+                ],
+                "",
+                "Upcoming assignments:",
+                *[
+                    f"- {a['due_at'] or ''} | {a['name'] or ''} | {a['html_url'] or ''}"
+                    for a in upcoming_asg
+                ],
+            ]
+        )
+
+        try:
+            curated = adapter.complete(prompt)
+        except AIAdapterError as e:
+            curated = f"# {c['name']}\n\nAI curation failed: {e}\n"
+
+        safe = (c["course_code"] or f"course-{cid}").replace("/", "-").replace(" ", "_")
+        path = out / f"{safe}.curated.md"
+        path.write_text(curated.strip() + "\n")
+        written += 1
+
+    console.print(f"Wrote AI-curated dossiers: {written} -> {out}")
     return 0

@@ -1,8 +1,8 @@
 # Canvas Course Agent
 
-A personal Canvas agent that builds per-course profiles (deadlines, submissions, announcements, resources) and now supports pluggable AI adapters (Codex OAuth / OpenAI API) for analysis workflows.
+An **AI Agent for Canvas** that continuously syncs course data (deadlines, submissions, announcements, pages/files/discussions), builds per-course dossiers, and uses an AI backend (Codex OAuth or OpenAI API) to curate structured study archives around each course syllabus. The agent is designed to answer the practical question: *"What matters this week for each course, based on the actual course materials?"* — not just list due dates.
 
-This is meant to work with **any** Canvas instance (e.g. `https://canvas.ubc.ca`) via config.
+This project is designed to work with **any** Canvas instance (e.g. `https://canvas.ubc.ca`) via config.
 
 ## What it does (current scope)
 - Import course list + deadline signals (assignments/quizzes/calendar)
@@ -176,6 +176,15 @@ canvas-agent ai probe --provider auto --prompt "Reply with OK"
 # Force provider for debugging
 canvas-agent ai probe --provider codex-oauth --prompt "Reply with OK"
 canvas-agent ai probe --provider openai-api --model gpt-4.1-mini --prompt "Reply with OK"
+```
+
+8) AI-curated course dossiers (syllabus-centered):
+```bash
+# Ensure profile data has been synced first
+canvas-agent profile sync --all
+
+# Let AI pick likely syllabus source (page/pdf/syllabus_body) and curate dossiers
+canvas-agent profile curate --all --provider auto --out-dir ./export/profiles_ai
 ```
 
 Global toggles:
