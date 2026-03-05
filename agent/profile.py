@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -512,6 +513,7 @@ def export_profiles_md(
 
 
 def curate_profiles_ai(
+    client: CanvasClient,
     *,
     db_path: str,
     out_dir: str = "./export/profiles_ai",
@@ -575,6 +577,21 @@ def curate_profiles_ai(
             if any(k in (f["display_name"] or "").lower() for k in ["syll", "outline", "course info"])
         ]
 
+        front_page_title = ""
+        front_page_body = ""
+        front_page_syllabus_links: list[str] = []
+        try:
+            fp = client.get_front_page(int(cid))
+            front_page_title = str(fp.get("title") or "")
+            front_page_body = str(fp.get("body") or "")
+            for href in re.findall(r'href="([^"]+)"', front_page_body):
+                h = href.replace("&amp;", "&")
+                if any(k in h.lower() for k in ["syll", "outline", "file", "files/"]):
+                    front_page_syllabus_links.append(h)
+            front_page_syllabus_links = list(dict.fromkeys(front_page_syllabus_links))[:12]
+        except Exception:
+            pass
+
         prompt = "\n".join(
             [
                 "You are organizing a Canvas course archive.",
@@ -600,6 +617,13 @@ def curate_profiles_ai(
                 "",
                 "Syllabus HTML (may be empty):",
                 (c["syllabus_body"] or "(empty)")[:6000],
+                "",
+                f"Front page title: {front_page_title or '(unknown)'}",
+                "Front page snippet:",
+                (front_page_body[:5000] if front_page_body else "(empty/unavailable)"),
+                "",
+                "Potential syllabus links found on front page:",
+                *([f"- {u}" for u in front_page_syllabus_links] or ["- (none)"]),
                 "",
                 "Possible syllabus pages:",
                 *(syllabus_hint_pages or ["- (none)"]),

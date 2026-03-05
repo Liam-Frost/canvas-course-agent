@@ -406,8 +406,10 @@ def main() -> None:
                 )
             )
         if args.profile_cmd == "curate":
+            client = canvas_client(s)
             raise SystemExit(
                 curate_profiles_ai(
+                    client,
                     db_path=s.db_path,
                     out_dir=args.out_dir,
                     all_courses=args.all,

@@ -134,6 +134,12 @@ class CanvasClient:
             params["latest_only"] = True
         return list(self._paginate("/api/v1/announcements", params=params))
 
+    def get_front_page(self, course_id: int) -> dict[str, Any]:
+        with self._client() as c:
+            r = c.get(f"/api/v1/courses/{course_id}/front_page")
+            r.raise_for_status()
+            return r.json()
+
     def list_pages(self, course_id: int) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"per_page": 100}
         return list(self._paginate(f"/api/v1/courses/{course_id}/pages", params=params))
