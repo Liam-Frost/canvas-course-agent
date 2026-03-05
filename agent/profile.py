@@ -207,6 +207,8 @@ def export_profiles_md(
     out.mkdir(parents=True, exist_ok=True)
 
     written = 0
+    index_rows: list[dict[str, object]] = []
+
     for cid in course_ids:
         c = conn.execute(
             """
@@ -458,5 +460,50 @@ def export_profiles_md(
         path.write_text("\n".join(lines) + "\n")
         written += 1
 
+        index_rows.append(
+            {
+                "course_id": cid,
+                "course_code": c["course_code"] or "",
+                "course_name": c["name"] or "",
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "due_7d": due_7d_count,
+                "missing": missing_count,
+                "late": late_count,
+                "pages": len(pages),
+                "files": len(files),
+                "discussions": len(discussions),
+                "announcements": len(anns),
+                "profile_file": path.name,
+            }
+        )
+
+    # Global summary index
+    idx_path = out / "profiles_index.md"
+    idx_lines: list[str] = []
+    idx_lines.append("# Canvas Course Profiles Index")
+    idx_lines.append("")
+    idx_lines.append(f"Generated at: `{datetime.now(UTC).isoformat()}`")
+    idx_lines.append("")
+    idx_lines.append("## Course summary")
+    idx_lines.append("")
+
+    for r in sorted(index_rows, key=lambda x: str(x["course_code"])):
+        idx_lines.append(
+            f"- **{r['course_code']}** — {r['course_name']} | "
+            f"risk `{r['risk_score']}/100 ({r['risk_level']})` | "
+            f"due7d `{r['due_7d']}` missing `{r['missing']}` late `{r['late']}` | "
+            f"ann `{r['announcements']}` pages `{r['pages']}` files `{r['files']}` discussions `{r['discussions']}` | "
+            f"file: `{r['profile_file']}`"
+        )
+
+    idx_lines.append("")
+    idx_lines.append("## Data availability legend")
+    idx_lines.append("- `0` may mean no data, feature disabled, or permission-limited endpoint on Canvas.")
+    idx_lines.append("- Prefer comparing across multiple sync runs before treating `0` as definitive.")
+
+    idx_path.write_text("\n".join(idx_lines) + "\n")
+
     console.print(f"Wrote course profiles: {written} -> {out}")
+    console.print(f"Wrote profile index: {idx_path}")
     return 0
