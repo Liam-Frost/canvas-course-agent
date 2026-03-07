@@ -68,6 +68,82 @@ def _iter_starred_course_ids(conn) -> list[int]:
     return [int(r[0]) for r in conn.execute("SELECT course_id FROM starred_courses").fetchall()]
 
 
+def _topic_for_item(conn, *, kind: str, item_id: int) -> tuple[str | None, float | None]:
+    r = conn.execute(
+        "SELECT primary_topic, confidence FROM ai_task_mapping_resolved WHERE kind=? AND item_id=?",
+        (kind, item_id),
+    ).fetchone()
+    if not r:
+        return None, None
+    topic = str(r[0]) if r[0] else None
+    conf = float(r[1]) if r[1] is not None else None
+    return topic, conf
+
+
+def _eta_for_item(conn, *, kind: str, item_id: int) -> int | None:
+    if kind == "assignment":
+        r = conn.execute("SELECT raw_json FROM assignments WHERE id=?", (item_id,)).fetchone()
+        if not r:
+            return None
+        try:
+            raw = json.loads(r[0] or "{}")
+        except Exception:
+            return None
+        pts = raw.get("points_possible")
+        if pts is None:
+            return None
+        try:
+            return int(max(20, min(300, float(pts) * 6)))
+        except Exception:
+            return None
+
+    if kind == "quiz":
+        r = conn.execute("SELECT raw_json FROM quizzes WHERE id=?", (item_id,)).fetchone()
+        if not r:
+            return None
+        try:
+            raw = json.loads(r[0] or "{}")
+        except Exception:
+            return None
+        tl = raw.get("time_limit")
+        if tl is None:
+            return None
+        try:
+            return int(max(10, min(180, int(tl) + 20)))
+        except Exception:
+            return None
+
+    return None
+
+
+def _format_reminder_message(conn, *, rm: Reminder, timezone: str) -> str:
+    tz = get_tz(timezone)
+    ref = rm.ref_time.astimezone(tz).strftime("%m-%d %a %H:%M")
+    tzs = tz_label(tz)
+
+    icon = "📝" if rm.kind == "assignment" else ("🧪" if rm.kind == "quiz" else "⏰")
+    kind_label = "Assignment" if rm.kind == "assignment" else ("Quiz" if rm.kind == "quiz" else "Reminder")
+
+    topic, conf = _topic_for_item(conn, kind=rm.kind, item_id=rm.item_id)
+    eta = _eta_for_item(conn, kind=rm.kind, item_id=rm.item_id)
+
+    lines: list[str] = []
+    lines.append(f"{icon} **[{rm.course_name}]** {rm.title}")
+    lines.append(f"📌 类型：{kind_label}")
+    if topic:
+        if conf is not None and conf < 0.6:
+            lines.append(f"🧠 主题：可能是 {topic} (低置信)")
+        else:
+            lines.append(f"🧠 主题：{topic}")
+    if eta is not None:
+        lines.append(f"⏱ 预计用时：~{eta} 分钟")
+    lines.append(f"🕒 截止：{ref} {tzs}")
+    if rm.url:
+        lines.append("🔗 [打开任务](" + rm.url + ")")
+
+    return "\n".join(lines)
+
+
 def _candidate_reminders(
     *,
     conn,
@@ -306,11 +382,8 @@ def remind_run(
             if _already_sent(conn, kind=rm.kind, item_id=rm.item_id, channel=rm.channel, remind_at=rm.when):
                 continue
 
-            # Build message
-            local_ref = fmt_canvas_dt_2line(rm.ref_time.isoformat(), tz)
-            msg = f"[{rm.kind}] {rm.course_name}: {rm.title}\nTime: {local_ref}"
-            if rm.url:
-                msg += f"\n{rm.url}"
+            # Build B+ reminder card message
+            msg = _format_reminder_message(conn, rm=rm, timezone=timezone)
 
             if rm.channel == "discord":
                 discord_send(webhook_url=discord_webhook_url or "", content=msg)
