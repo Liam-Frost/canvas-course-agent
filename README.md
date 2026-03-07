@@ -37,6 +37,7 @@ Set env vars (recommended via `.env`):
 - `OPENAI_API_KEY` (required when `AI_PROVIDER=openai-api`)
 - `OPENAI_BASE_URL` (optional, default `https://api.openai.com/v1`)
 - `SYLLABUS_LINK_KEYWORDS` (comma-separated keywords for syllabus link detection on front page/pages/files)
+- `COURSE_LABEL_SHORT` (`on|off`) compact course labels globally in user-facing outputs (digest/reminders/upcoming)
 
 Example (`.env`):
 ```bash

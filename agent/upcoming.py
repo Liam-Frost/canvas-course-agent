@@ -9,6 +9,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
+from .course_label import format_course_label
 from .storage.sqlite import connect, list_courses, list_starred_course_ids
 from .timeutil import fmt_canvas_dt_2line, get_tz, parse_canvas_dt, tz_label
 
@@ -27,14 +28,27 @@ class Item:
     url: str
 
 
-def _course_name_map(conn: sqlite3.Connection) -> dict[int, str]:
+def _course_name_map(conn: sqlite3.Connection, *, short_enabled: bool) -> dict[int, str]:
     rows = list_courses(conn)
-    return {int(r["id"]): str(r["name"] or r["course_code"] or r["id"]) for r in rows}
+    return {
+        int(r["id"]): (
+            format_course_label(str(r["name"] or ""), r["course_code"], short_enabled=short_enabled)
+            or str(r["id"])
+        )
+        for r in rows
+    }
 
 
-def upcoming(*, db_path: str, days: int = 14, all_courses: bool = False, timezone: str = "UTC") -> int:
+def upcoming(
+    *,
+    db_path: str,
+    days: int = 14,
+    all_courses: bool = False,
+    timezone: str = "UTC",
+    course_label_short: bool = False,
+) -> int:
     conn = connect(db_path)
-    course_name_by_id = _course_name_map(conn)
+    course_name_by_id = _course_name_map(conn, short_enabled=course_label_short)
     course_ids = [int(r["id"]) for r in list_courses(conn)] if all_courses else list_starred_course_ids(conn)
 
     if not course_ids:

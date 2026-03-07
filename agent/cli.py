@@ -46,6 +46,7 @@ def load_settings(env_path: str) -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         syllabus_link_keywords=os.getenv("SYLLABUS_LINK_KEYWORDS", "syll,outline,course info,grading,schedule"),
+        course_label_short=(os.getenv("COURSE_LABEL_SHORT", "off").lower() in ("1", "true", "on", "yes")),
     )
 
 
@@ -63,6 +64,7 @@ def cmd_healthcheck(env_path: str) -> int:
     console.print("ai_provider:", s.ai_provider)
     console.print("ai_model:", s.ai_model or "(default)")
     console.print("openai_api_key set:", bool(s.openai_api_key))
+    console.print("course_label_short:", s.course_label_short)
 
     if not s.canvas_access_token:
         console.print("[yellow]CANVAS_ACCESS_TOKEN not set (expected for real API calls).[/yellow]")
@@ -343,6 +345,7 @@ def main() -> None:
                     dry_run=dry,
                     discord_webhook_url=s.discord_webhook_url,
                     telegram_bot_token=s.telegram_bot_token,
+                    course_label_short=s.course_label_short,
                 )
             )
 
@@ -363,6 +366,7 @@ def main() -> None:
                 openai_base_url=s.openai_base_url,
                 weekly_v2=args.weekly_v2,
                 ai_weekly_plan=args.ai_weekly_plan,
+                course_label_short=s.course_label_short,
             )
         )
 
@@ -375,7 +379,15 @@ def main() -> None:
 
     if args.cmd == "upcoming":
         s = load_settings(env_path)
-        raise SystemExit(upcoming(db_path=s.db_path, days=args.days, all_courses=args.all, timezone=s.timezone))
+        raise SystemExit(
+            upcoming(
+                db_path=s.db_path,
+                days=args.days,
+                all_courses=args.all,
+                timezone=s.timezone,
+                course_label_short=s.course_label_short,
+            )
+        )
 
     if args.cmd == "ai":
         s = load_settings(env_path)

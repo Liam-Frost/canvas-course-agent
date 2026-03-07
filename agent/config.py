@@ -19,3 +19,6 @@ class Settings(BaseModel):
 
     # Syllabus detection strategy
     syllabus_link_keywords: str = Field(default="syll,outline,course info,grading,schedule")
+
+    # Course label display mode
+    course_label_short: bool = Field(default=False)

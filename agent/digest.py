@@ -9,6 +9,7 @@ from rich.console import Console
 
 from .ai_adapter import AIAdapter, AIAdapterError
 from .discord_webhook import discord_send
+from .course_label import format_course_label
 from .storage.sqlite import (
     connect,
     get_ai_mapping_override,
@@ -38,33 +39,23 @@ class DigestItem:
     ai_next_step: str | None = None
 
 
-def _short_course_label(name: str, code: str | None) -> str:
-    """Try to derive a compact label like 'CPEN 212' from Canvas course_code/name."""
-    text = f"{code or ''} {name}".strip()
-    # Common UBC patterns: CPEN_V 212 ..., CPSC_V 221 ..., MATH_V 256 ...
-    import re
-
-    m = re.search(r"\b([A-Z]{3,5})[_\s-]*[A-Z]?\s*(\d{3})\b", text)
-    if m:
-        return f"{m.group(1)} {m.group(2)}"
-
-    # fallback: course_code if it exists, else name
-    return (code or name).strip()
-
-
-def _course_name_map(conn) -> dict[int, str]:
+def _course_name_map(conn, *, short_enabled: bool) -> dict[int, str]:
     rows = list_courses(conn)
     out: dict[int, str] = {}
     for r in rows:
-        out[int(r["id"])] = _short_course_label(str(r["name"] or ""), r["course_code"])
+        out[int(r["id"])] = format_course_label(
+            str(r["name"] or ""),
+            r["course_code"],
+            short_enabled=short_enabled,
+        )
     return out
 
 
-def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str) -> list[DigestItem]:
+def build_digest(*, db_path: str, days: int, all_courses: bool, timezone: str, short_course_label: bool) -> list[DigestItem]:
     conn = connect(db_path)
     tz = get_tz(timezone)
 
-    course_name_by_id = _course_name_map(conn)
+    course_name_by_id = _course_name_map(conn, short_enabled=short_course_label)
     course_ids = [int(r["id"]) for r in list_courses(conn)] if all_courses else list_starred_course_ids(conn)
 
     now = datetime.now(UTC)
@@ -661,9 +652,16 @@ def cmd_digest(
     openai_base_url: str = "https://api.openai.com/v1",
     weekly_v2: bool = False,
     ai_weekly_plan: bool = False,
+    course_label_short: bool = False,
 ) -> int:
     conn = connect(db_path)
-    items = build_digest(db_path=db_path, days=days, all_courses=all_courses, timezone=timezone)
+    items = build_digest(
+        db_path=db_path,
+        days=days,
+        all_courses=all_courses,
+        timezone=timezone,
+        short_course_label=course_label_short,
+    )
 
     adapter: AIAdapter | None = None
     if (ai_describe or ai_weekly_plan) and items:

@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .discord_webhook import discord_send
+from .course_label import format_course_label
 from .storage.sqlite import connect, get_setting
 from .telegram_cmd import telegram_send
 from .timeutil import fmt_canvas_dt_2line, get_tz, parse_canvas_dt, tz_label
@@ -29,11 +30,15 @@ class Reminder:
     url: str
 
 
-def _course_name_map(conn) -> dict[int, str]:
+def _course_name_map(conn, *, short_enabled: bool) -> dict[int, str]:
     rows = conn.execute("SELECT id, name, course_code FROM courses").fetchall()
     out: dict[int, str] = {}
     for r in rows:
-        out[int(r[0])] = str(r[1] or r[2] or r[0])
+        out[int(r[0])] = format_course_label(
+            str(r[1] or ""),
+            r[2],
+            short_enabled=short_enabled,
+        ) or str(r[0])
     return out
 
 
@@ -149,6 +154,7 @@ def _candidate_reminders(
     conn,
     lookahead_min: int,
     timezone: str,
+    short_course_label: bool,
 ) -> Iterable[Reminder]:
     now = datetime.now(UTC)
     look_end = now + timedelta(minutes=lookahead_min)
@@ -156,7 +162,7 @@ def _candidate_reminders(
     tz = get_tz(timezone)
     _ = tz_label(tz)
 
-    course_name_by_id = _course_name_map(conn)
+    course_name_by_id = _course_name_map(conn, short_enabled=short_course_label)
     course_ids = _iter_starred_course_ids(conn)
     if not course_ids:
         return []
@@ -323,6 +329,7 @@ def remind_run(
     dry_run: bool = True,
     discord_webhook_url: str | None = None,
     telegram_bot_token: str | None = None,
+    course_label_short: bool = False,
 ) -> int:
     conn = connect(db_path)
 
@@ -334,7 +341,14 @@ def remind_run(
     tz = get_tz(timezone)
     tzs = tz_label(tz)
 
-    reminders = list(_candidate_reminders(conn=conn, lookahead_min=lookahead_min, timezone=timezone))
+    reminders = list(
+        _candidate_reminders(
+            conn=conn,
+            lookahead_min=lookahead_min,
+            timezone=timezone,
+            short_course_label=course_label_short,
+        )
+    )
 
     t = Table(title=f"Reminders (lookahead {lookahead_min} min)")
     t.add_column("when\n(UTC)")
